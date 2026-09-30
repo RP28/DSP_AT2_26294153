@@ -46,7 +46,7 @@ Then select an amount and two currencies. Use **Get Latest Rate** for the latest
 | --- | --- | --- |
 | `api.py` | `get_url` | - |
 | `currency.py` | `round_rate`, `reverse_rate`, `format_output` | - |
-| `frankfurter.py` | `get_currencies_list`, `get_latest_rates`, `get_historical_rate`, `get_rate_trend` | `_load_json`, `_normalise_currency`, `_normalise_date`, `_extract_rate`, `_cached_currencies`, `_cached_latest_unit_rate`, `_cached_historical_unit_rate`, `_cached_rate_trend` |
+| `frankfurter.py` | `get_currencies_list`, `get_latest_rates`, `get_historical_rate`, `get_rate_trend` | `_load_json`, `_normalise_currency`, `_normalise_date`, `_extract_rate`, `_cached_currencies`, `_cached_latest_unit_rate`, `_cached_historical_unit_rate`, `_get_trend_cache_entry`, `_merge_date_ranges`, `_missing_date_ranges`, `_load_trend_daily_rates`, `_cached_rate_trend` |
 | `app.py` | - | `_show_result`, `_show_trend` |
 
 ## Design Decisions
@@ -55,18 +55,20 @@ HTTP calls use a reusable `requests.Session` with a finite timeout. Network fail
 `st.session_state` stores successful latest/historical results so they remain visible after normal Streamlit reruns. The UI uses spinners and user-friendly `st.error`, `st.warning`, and `st.info` feedback.
 
 ## Performance and Caching
-Caching uses Streamlit's in-memory `st.cache_data` with both `ttl` and `max_entries`, so cache growth is explicitly bounded. Streamlit manages removal when a cache reaches its configured maximum. The implementation does not assume or claim a particular replacement policy.
+Caching uses Streamlit's in-memory `st.cache_data` with both `ttl` and `max_entries` for exact-match API requests. The trend chart uses a custom in-process interval cache because time-series responses can be large JSON payloads, and repeatedly downloading and parsing the same overlapping dates would be unnecessarily time consuming.
+
+The custom trend cache stores daily rates by currency pair and tracks which date ranges are already covered. When a new trend request overlaps a cached range, the app calls Frankfurter only for the missing non-overlapping date ranges, then combines the cached and newly fetched data before sampling quarterly chart points.
 
 | Data | Cache identity | TTL | `max_entries` | Reasoning |
 | --- | --- | ---: | ---: | --- |
 | Currency list | no arguments | 7 days | 1 | Very small and changes rarely. |
 | Latest unit rate | currency pair | 1 hour | 128 | Rates update daily, while one-hour reuse avoids repeated rerun traffic. |
 | Historical unit rate | currency pair + date | 30 days | 512 | Historical observations are effectively stable and each entry is tiny. |
-| Three-year trend | pair + date range | 24 hours | 64 | Mostly historical data, but the most recent observation can change. |
+| Trend daily window | currency pair + covered date ranges | 24 hours | 64 pairs | Avoids re-fetching overlapping parts of large historical JSON responses. |
 
 The required public functions keep their starter `amount` parameter, but internal cached helpers deliberately exclude it. For example, AUD -> USD amounts of 10, 50, and 100 share the same cached unit rate. Failed API operations raise an internal exception before a cached function returns, so an error is not treated as valid rate data.
 
-The trend implementation uses one Frankfurter time-series request and samples the latest available observation in each calendar quarter locally, rather than issuing many separate requests.
+The trend implementation samples the latest available observation in each calendar quarter locally. A first request for a pair may still fetch the whole requested window, but later overlapping requests fetch only the missing leading or trailing period.
 
 ## Deployment
 ### Live Demo

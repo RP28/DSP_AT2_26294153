@@ -1,7 +1,9 @@
 """Frankfurter API integration and bounded Streamlit caching."""
 
-from datetime import date
+from collections import OrderedDict
+from datetime import date, timedelta
 import json
+from time import time
 from urllib.parse import urlencode
 
 import streamlit as st
@@ -18,6 +20,7 @@ HISTORICAL_RATE_CACHE_TTL = 30 * 24 * 60 * 60
 HISTORICAL_RATE_CACHE_MAX_ENTRIES = 512
 TREND_CACHE_TTL = 24 * 60 * 60
 TREND_CACHE_MAX_ENTRIES = 64
+_TREND_WINDOW_CACHE = OrderedDict()
 
 
 class _FrankfurterError(RuntimeError):
@@ -111,7 +114,7 @@ def get_currencies_list():
 @st.cache_data(
     ttl=LATEST_RATE_CACHE_TTL,
     max_entries=LATEST_RATE_CACHE_MAX_ENTRIES,
-    show_spinner=False,
+    show_spinner=False
 )
 def _cached_latest_unit_rate(from_currency: str, to_currency: str) -> tuple:
     query = urlencode({"from": from_currency, "to": to_currency})
@@ -213,37 +216,120 @@ def get_historical_rate(from_currency, to_currency, from_date, amount):
         return None
 
 
-@st.cache_data(
-    ttl=TREND_CACHE_TTL,
-    max_entries=TREND_CACHE_MAX_ENTRIES,
-    show_spinner=False,
-)
+def _get_trend_cache_entry(from_currency: str, to_currency: str) -> dict:
+    """Return the active trend cache entry for a currency pair."""
+    cache_key = (from_currency, to_currency)
+    now = time()
+    entry = _TREND_WINDOW_CACHE.get(cache_key)
+    if entry and entry["expires_at"] > now:
+        _TREND_WINDOW_CACHE.move_to_end(cache_key)
+        return entry
+    if entry:
+        del _TREND_WINDOW_CACHE[cache_key]
+    while len(_TREND_WINDOW_CACHE) >= TREND_CACHE_MAX_ENTRIES:
+        _TREND_WINDOW_CACHE.popitem(last=False)
+    entry = {
+        "expires_at": now + TREND_CACHE_TTL,
+        "covered_ranges": [],
+        "daily_rates": {},
+    }
+    _TREND_WINDOW_CACHE[cache_key] = entry
+    return entry
+
+
+def _merge_date_ranges(ranges: list) -> list:
+    """Merge overlapping or adjacent date ranges."""
+    if not ranges:
+        return []
+    merged = []
+    for start_date, end_date in sorted(ranges):
+        if not merged or start_date > merged[-1][1] + timedelta(days=1):
+            merged.append([start_date, end_date])
+            continue
+        merged[-1][1] = max(merged[-1][1], end_date)
+    return [(start_date, end_date) for start_date, end_date in merged]
+
+
+def _missing_date_ranges(start_date: date, end_date: date, covered_ranges: list) -> list:
+    """Return the parts of a requested range not already covered by cache."""
+    missing = []
+    cursor = start_date
+    for covered_start, covered_end in sorted(covered_ranges):
+        if covered_end < cursor:
+            continue
+        if covered_start > end_date:
+            break
+        if covered_start > cursor:
+            missing.append((cursor, min(covered_start - timedelta(days=1), end_date)))
+        cursor = max(cursor, covered_end + timedelta(days=1))
+        if cursor > end_date:
+            break
+    if cursor <= end_date:
+        missing.append((cursor, end_date))
+    return missing
+
+
+def _load_trend_daily_rates(
+    from_currency: str,
+    to_currency: str,
+    start_date: date,
+    end_date: date,
+) -> dict:
+    query = urlencode({"from": from_currency, "to": to_currency})
+    payload = _load_json(
+        f"{BASE_URL}/{start_date.isoformat()}..{end_date.isoformat()}?{query}"
+    )
+    daily_rates = payload.get("rates")
+    if not isinstance(daily_rates, dict):
+        raise _FrankfurterError("The trend response did not contain rate history.")
+    rates = {}
+    for rate_date, day_data in daily_rates.items():
+        if not isinstance(day_data, dict):
+            continue
+        rate = day_data.get(to_currency)
+        if not isinstance(rate, (int, float)) or rate <= 0:
+            continue
+        parsed_date = date.fromisoformat(rate_date)
+        rates[parsed_date.isoformat()] = float(rate)
+    return rates
+
+
 def _cached_rate_trend(
     from_currency: str,
     to_currency: str,
     start_date: str,
     end_date: str,
 ) -> dict:
-    query = urlencode({"from": from_currency, "to": to_currency})
-    payload = _load_json(f"{BASE_URL}/{start_date}..{end_date}?{query}")
-    daily_rates = payload.get("rates")
-    if not isinstance(daily_rates, dict):
-        raise _FrankfurterError("The trend response did not contain rate history.")
-
-    # Keep the latest available observation in each calendar quarter. This turns
-    # one time-series request into a compact chart instead of making many calls.
+    start = date.fromisoformat(start_date)
+    end = date.fromisoformat(end_date)
+    cache_entry = _get_trend_cache_entry(from_currency, to_currency)
+    missing_ranges = _missing_date_ranges(
+        start,
+        end,
+        cache_entry["covered_ranges"],
+    )
+    for missing_start, missing_end in missing_ranges:
+        cache_entry["daily_rates"].update(
+            _load_trend_daily_rates(
+                from_currency,
+                to_currency,
+                missing_start,
+                missing_end,
+            )
+        )
+        cache_entry["covered_ranges"] = _merge_date_ranges(
+            cache_entry["covered_ranges"] + [(missing_start, missing_end)]
+        )
+    requested_daily_rates = {
+        rate_date: rate
+        for rate_date, rate in cache_entry["daily_rates"].items()
+        if start_date <= rate_date <= end_date
+    }
     quarterly = {}
-    for rate_date in sorted(daily_rates):
-        day_data = daily_rates[rate_date]
-        if not isinstance(day_data, dict):
-            continue
-        rate = day_data.get(to_currency)
-        if not isinstance(rate, (int, float)) or rate <= 0:
-            continue
+    for rate_date in sorted(requested_daily_rates):
         parsed = date.fromisoformat(rate_date)
         quarter = (parsed.year, (parsed.month - 1) // 3 + 1)
-        quarterly[quarter] = (rate_date, float(rate))
-
+        quarterly[quarter] = (rate_date, requested_daily_rates[rate_date])
     if not quarterly:
         raise _FrankfurterError("No usable trend data was returned.")
     return {rate_date: rate for rate_date, rate in quarterly.values()}
@@ -271,7 +357,6 @@ def get_rate_trend(from_currency: str, to_currency: str, years: int) -> dict:
         years = int(years)
         if years <= 0:
             raise _FrankfurterError("Years must be positive.")
-
         from_code = _normalise_currency(from_currency)
         to_code = _normalise_currency(to_currency)
         today = date.today()
@@ -279,9 +364,7 @@ def get_rate_trend(from_currency: str, to_currency: str, years: int) -> dict:
             start = today.replace(year=today.year - years)
         except ValueError:  # 29 February -> 28 February in a non-leap year.
             start = today.replace(month=2, day=28, year=today.year - years)
-
         if from_code == to_code:
-            # No downstream request is needed for a mathematically constant pair.
             trend = {}
             cursor_year, cursor_month = start.year, start.month
             while (cursor_year, cursor_month) <= (today.year, today.month):
@@ -291,7 +374,6 @@ def get_rate_trend(from_currency: str, to_currency: str, years: int) -> dict:
                     cursor_month -= 12
                     cursor_year += 1
             return trend
-
         return _cached_rate_trend(
             from_code,
             to_code,
