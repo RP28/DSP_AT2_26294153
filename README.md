@@ -257,7 +257,7 @@ The trend implementation samples the latest available observation in each calend
 
 ## Deployment
 ### Live Demo
-`https://dsp-at2-26294153.onrender.com`
+https://dsp-at2-26294153.onrender.com
 
 Current Render configuration for this project:
 
