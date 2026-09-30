@@ -1,29 +1,52 @@
 # FX Converter
 
 ## Author
-Name: `Ratnadeep Patra`  
-Student ID: `26294153`
+**Name:** Ratnadeep Patra  
+**Student ID:** 26294153
 
 GitHub Repository: https://github.com/RP28/DSP_AT2_26294153
 
 ## Description
-FX Converter is a Streamlit web application that uses the Frankfurter API to list supported currencies, retrieve the latest exchange rate, retrieve a historical rate for a selected date, calculate the converted amount, and calculate the inverse rate. The starter's optional three-year rate-trend function is also implemented and shown after a successful latest-rate lookup.
+FX Converter is a Streamlit web application that uses the Frankfurter API to:
 
-The public latest and historical functions still accept `amount`, but the API layer caches the underlying **unit rate** independently of amount and performs `converted_amount = amount * rate` locally. This prevents changing only the amount from creating another downstream request for the same pair/date.
+- list the currencies supported by Frankfurter
+- retrieve the latest conversion rate between two currencies
+- retrieve a historical conversion rate for a selected past date
+- calculate the converted amount and inverse conversion rate
+- display the optional three-year rate trend provided in the starter template
+
+The required starter function signatures are kept unchanged. Latest and historical API requests cache the **unit rate**, so changing only the amount does not create another request for the same currency pair/date.
+
+### Challenges faced
+The main challenge was keeping the app responsive without repeatedly calling the API. Exact latest/historical requests are cached, while the three-year trend uses a small interval cache. If a later trend request overlaps a period already loaded, only the missing date range is requested.
+
+A second challenge was Streamlit's rerun behaviour. `st.session_state` keeps the current result visible during normal widget reruns, and the current input values are also stored in URL query parameters so they can be restored after a browser refresh.
+
+### Possible future features
+Possible extensions include downloadable conversion history, comparison of multiple currency pairs on one chart, and a user-selectable trend period.
 
 ## How to Setup
-The application was designed for **Python 3** with these direct dependencies:
+The application was developed with **Python 3.13.5**.
+
+Direct dependencies:
 
 - `streamlit==1.64.0`
 - `requests==2.32.5`
 
-Create and activate a virtual environment, then install the dependencies:
+Create and activate a virtual environment, then install the dependencies.
 
+### macOS/Linux
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate          # macOS/Linux
-.venv\Scripts\activate         # Windows
+source .venv/bin/activate
 python3 -m pip install streamlit==1.64.0 requests==2.32.5
+```
+
+### Windows PowerShell
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install streamlit==1.64.0 requests==2.32.5
 ```
 
 ## How to Run the Program
@@ -33,246 +56,120 @@ From the folder containing the five submission files, run:
 streamlit run app.py
 ```
 
-Then select an amount and two currencies. Use **Get Latest Rate** for the latest conversion, or select a past date and use **Conversion Rate** for a historical conversion. The displayed sentence follows the format required by the assignment.
+Then:
 
-## Create the Submission ZIP
-From inside the project folder, run the command for your terminal. The ZIP will be created in the same folder.
+1. enter the amount to convert
+2. choose the source and destination currencies
+3. click **Get Latest Rate** for the latest rate and three-year trend
+4. or select a past date and click **Conversion Rate** for a historical rate
 
-macOS/Linux:
-
-```bash
-zip dsp_at2_26294153.zip api.py app.py currency.py frankfurter.py README.md
-```
-
-Windows PowerShell:
-
-```powershell
-Compress-Archive -Path api.py, app.py, currency.py, frankfurter.py, README.md -DestinationPath dsp_at2_26294153.zip -Force
-```
+The displayed conversion sentence is produced by `currency.format_output()` in the format required by the assignment brief.
 
 ## Project Structure
-- `app.py` - Streamlit UI, input validation, browser-refresh input persistence, session-state result persistence, loading/error feedback, required output text, and the optional trend chart.
-- `api.py` - low-level HTTP GET helper using a reusable `requests.Session` and a finite 10-second timeout.
-- `frankfurter.py` - Frankfurter endpoint integration, response validation, same-currency handling, bounded caching, and trend sampling.
-- `currency.py` - rate rounding, inverse-rate calculation, converted-amount calculation, and required output formatting.
-- `README.md` - project documentation, setup, engineering decisions, and deployment configuration.
+The submission contains only the five files required by the assignment:
 
-### Python functions
+- `app.py` - Streamlit user interface, spinners, result display, session-state persistence, and browser-refresh input persistence
+- `api.py` - low-level HTTP GET helper with timeout and network-error handling
+- `frankfurter.py` - Frankfurter endpoint calls, response validation, exact-result caching, and non-repeating trend-period caching
+- `currency.py` - rounding, inverse-rate calculation, converted-amount calculation, and output formatting
+- `README.md` - setup, usage, design notes, functions, sequence diagram, and citations
 
-| File | Public functions | Private functions |
-| --- | --- | --- |
-| `api.py` | `get_url` | - |
-| `currency.py` | `round_rate`, `reverse_rate`, `format_output` | - |
-| `frankfurter.py` | `get_currencies_list`, `get_latest_rates`, `get_historical_rate`, `get_rate_trend` | `_load_json`, `_normalise_currency`, `_normalise_date`, `_extract_rate`, `_cached_currencies`, `_cached_latest_unit_rate`, `_cached_historical_unit_rate`, `_get_trend_cache_entry`, `_merge_date_ranges`, `_missing_date_ranges`, `_load_trend_daily_rates`, `_cached_rate_trend` |
-| `app.py` | - | `_get_query_value`, `_query_amount`, `_query_currency_index`, `_query_historical_date`, `_store_recent_inputs`, `_show_result`, `_show_trend` |
+## Python Functions
 
-## Function Sequence Diagrams
-### Currency loading
+| File | Functions |
+| --- | --- |
+| `api.py` | `get_url` |
+| `currency.py` | `round_rate`, `reverse_rate`, `format_output` |
+| `frankfurter.py` | `_load_json`, `_normalise_currency`, `_normalise_date`, `_extract_rate`, `_cached_currencies`, `get_currencies_list`, `_cached_latest_unit_rate`, `get_latest_rates`, `_cached_historical_unit_rate`, `get_historical_rate`, `_trend_cache_entry`, `_merge_ranges`, `_missing_ranges`, `_fetch_trend_window`, `get_rate_trend` |
+| `app.py` | `_query_value`, `_saved_amount`, `_saved_currency_index`, `_saved_date`, `_save_inputs`, `_show_result`, `_show_trend` |
+
+## Application Sequence Diagram
+
 ```mermaid
 sequenceDiagram
     actor User
     participant App as app.py
-    participant URL as Browser URL
     participant F as frankfurter.py
-    participant Api as api.py
+    participant API as api.py
     participant FX as Frankfurter API
 
-    User->>App: Open Streamlit app
+    User->>App: Open app
     App->>F: get_currencies_list()
-    F->>F: _cached_currencies()
-    F->>F: _load_json("/currencies")
-    F->>Api: get_url(url)
-    Api->>FX: GET /currencies
-    FX-->>Api: HTTP response
-    Api-->>F: status_code, response_text
-    alt valid response
-        F-->>F: Parse JSON and sort currency codes
-        F-->>App: currencies
-        App->>URL: Read saved input query parameters
-        App->>App: _get_query_value()
-        App->>App: _query_amount()
-        App->>App: _query_currency_index()
-        App->>App: _query_historical_date()
-        App-->>User: Show amount input, currency dropdowns, latest button, date input, and historical button
-    else error response
-        F-->>App: None
-        App-->>User: Show loading error and stop
+    F->>API: get_url(/currencies) if not cached
+    API->>FX: HTTP GET
+    FX-->>API: Response
+    API-->>F: status code + text
+    F-->>App: Currency list
+    App-->>User: Show amount, currencies, buttons and date input
+
+    alt Get Latest Rate
+        User->>App: Click latest-rate button
+        App->>F: get_latest_rates(...)
+        F->>API: GET /latest if unit rate not cached
+        API->>FX: HTTP GET
+        FX-->>API: Response
+        F-->>App: Latest date + unit rate
+        App-->>User: Show formatted conversion
+        App->>F: get_rate_trend(...)
+        Note over F: Reuse covered trend periods and fetch only missing date ranges
+        F->>API: GET missing trend period(s), if any
+        API->>FX: HTTP GET
+        FX-->>API: Response
+        F-->>App: Quarterly trend
+        App-->>User: Show trend chart
+    else Conversion Rate
+        User->>App: Click historical-rate button
+        App->>F: get_historical_rate(...)
+        F->>API: GET /date if unit rate not cached
+        API->>FX: HTTP GET
+        FX-->>API: Response
+        F-->>App: Historical unit rate
+        App-->>User: Show formatted conversion
     end
 ```
 
-### Latest conversion and trend
-```mermaid
-sequenceDiagram
-    actor User
-    participant App as app.py
-    participant URL as Browser URL
-    participant F as frankfurter.py
-    participant Api as api.py
-    participant FX as Frankfurter API
+## Design and Reliability Notes
 
-    User->>App: Click Get Latest Rate
-    App-->>User: Show inline "Fetching the latest exchange rate..." spinner
-    App->>App: Clear historical_result
-    App->>F: get_latest_rates(from_currency, to_currency, amount)
-    F->>F: _normalise_currency(from_currency)
-    F->>F: _normalise_currency(to_currency)
-    alt same currency
-        F-->>App: today, 1.0
-    else different currencies
-        F->>F: _cached_latest_unit_rate(from_currency, to_currency)
-        F->>F: _load_json("/latest")
-        F->>Api: get_url(url)
-        Api->>FX: GET /latest
-        FX-->>Api: HTTP response
-        Api-->>F: status_code, response_text
-        F->>F: _extract_rate(payload, to_currency)
-        F-->>App: latest_date, latest_rate
-    end
+- `api.py` uses `requests.get()` directly with a 10-second timeout. This keeps the starter helper simple and easy to test.
+- API failures, invalid JSON, missing rate fields, invalid currencies, and future historical dates are handled without showing raw exceptions to the user.
+- Same-currency conversions return a rate of `1.0` without a redundant rate request.
+- Latest-rate cache entries are kept for one hour and historical rate entries for 30 days.
+- The supported-currency list is cached for seven days.
+- Trend data is cached in memory for up to 7 days for a maximum of 64 currency pairs. When requested periods overlap, only date ranges not already available in the cache are fetched from Frankfurter.
+- Failed API calls are raised internally before a cached helper returns, so failures are not stored as valid cached values.
+- Streamlit spinners are shown while loading currencies, fetching the latest rate, fetching/rendering trend data, and fetching a historical rate.
+- The amount, selected currencies, and historical date are stored in URL query parameters, allowing the input state to be restored after a browser refresh.
+- In-memory caches and `st.session_state` reset when the Streamlit server/session itself is restarted.
 
-    alt latest rate returned
-        App->>App: Save latest_result in st.session_state
-        App-->>User: Show latest conversion text directly below Get Latest Rate
-        App-->>User: Show inline "Fetching the 3-year rate trend..." spinner
-        App->>F: get_rate_trend(from_currency, to_currency, TREND_YEARS)
-        F->>F: _normalise_currency(from_currency)
-        F->>F: _normalise_currency(to_currency)
-        alt same currency
-            F-->>App: constant trend with rate 1.0
-        else different currencies
-            F->>F: _cached_rate_trend(from_currency, to_currency, start_date, end_date)
-            F->>F: _get_trend_cache_entry(from_currency, to_currency)
-            F->>F: _missing_date_ranges(start_date, end_date, covered_ranges)
-            alt missing date ranges exist
-                loop each missing range
-                    F->>F: _load_trend_daily_rates(from_currency, to_currency, missing_start, missing_end)
-                    F->>F: _load_json("missing time-series window")
-                    F->>Api: get_url(url)
-                    Api->>FX: GET /start..end
-                    FX-->>Api: HTTP response
-                    Api-->>F: status_code, response_text
-                    F->>F: Store valid daily rates
-                    F->>F: _merge_date_ranges(covered_ranges)
-                end
-            else requested range already cached
-                F->>F: Reuse cached daily rates
-            end
-            F->>F: Sample latest rate in each quarter
-            F-->>App: trend dictionary
-        end
-        App->>App: Save latest_trend in st.session_state
-        App->>URL: _store_recent_inputs()
-        App-->>User: Show inline "Rendering the 3-year rate trend chart..." spinner
-        App-->>User: Show 3-year trend directly below latest conversion text
-    else latest rate unavailable
-        App-->>User: Show latest-rate error
-        App->>URL: _store_recent_inputs()
-    end
+## Create the Submission ZIP
+The assignment requires the five files to be directly inside the ZIP with no enclosing folder.
+
+### macOS/Linux
+```bash
+zip dsp_at2_26294153.zip app.py api.py frankfurter.py currency.py README.md
 ```
 
-### Historical conversion
-```mermaid
-sequenceDiagram
-    actor User
-    participant App as app.py
-    participant URL as Browser URL
-    participant F as frankfurter.py
-    participant Api as api.py
-    participant FX as Frankfurter API
-
-    User->>App: Click Conversion Rate
-    App->>App: Clear latest_result and latest_trend
-    App->>F: get_historical_rate(from_currency, to_currency, historical_date, amount)
-    F->>F: _normalise_currency(from_currency)
-    F->>F: _normalise_currency(to_currency)
-    F->>F: _normalise_date(historical_date)
-    alt same currency
-        F-->>App: 1.0
-    else different currencies
-        F->>F: _cached_historical_unit_rate(from_currency, to_currency, date)
-        F->>F: _load_json("/date")
-        F->>Api: get_url(url)
-        Api->>FX: GET /date
-        FX-->>Api: HTTP response
-        Api-->>F: status_code, response_text
-        F->>F: _extract_rate(payload, to_currency)
-        F-->>App: historical_rate
-    end
-
-    alt historical rate returned
-        App->>App: Save historical_result in st.session_state
-        App->>URL: _store_recent_inputs()
-        App-->>User: Show only historical conversion text below Conversion Rate
-    else historical rate unavailable
-        App-->>User: Show historical-rate error
-        App->>URL: _store_recent_inputs()
-    end
+### Windows PowerShell
+```powershell
+Compress-Archive -Path app.py, api.py, frankfurter.py, currency.py, README.md -DestinationPath dsp_at2_26294153.zip -Force
 ```
-
-### Rendering results and trend
-```mermaid
-sequenceDiagram
-    actor User
-    participant App as app.py
-    participant C as currency.py
-    participant St as Streamlit UI
-
-    App->>App: _show_result(title, result)
-    App->>C: format_output(date, from_currency, to_currency, rate, amount)
-    C->>C: round_rate(rate)
-    C->>C: reverse_rate(rate)
-    C->>C: round_rate(1 / rate)
-    C-->>App: formatted output sentence
-    App->>St: Show formatted output sentence
-    St-->>User: Display conversion result
-
-    App->>App: _show_trend(trend, from_currency, to_currency)
-    alt trend is empty
-        App->>St: Show trend unavailable warning
-    else trend has data
-        App->>St: Show line chart
-    end
-    St-->>User: Display trend section
-```
-
-## Design Decisions
-HTTP calls use a reusable `requests.Session` with a finite timeout. Network failures, non-successful HTTP responses, malformed JSON, missing rate fields, invalid dates, and unavailable trend data are handled without exposing raw exceptions in the Streamlit UI. Same-currency conversions return a unit rate of `1.0` without making a redundant API request.
-
-`st.session_state` stores the active latest or historical result so it remains visible after normal Streamlit reruns. Latest and historical results are mutually exclusive: clicking **Get Latest Rate** clears the historical result and shows the latest-rate text plus the three-year trend directly below that button; clicking **Conversion Rate** clears the latest result and trend, then shows only the historical conversion text below the historical button. The latest workflow uses inline section-level spinners while fetching the latest rate, fetching the slower three-year trend data, and rendering the trend chart, so the user receives feedback in the exact section that is loading. The app also stores the latest amount, selected currencies, and historical date in URL query parameters, so refreshing the browser restores the user's most recent input values as defaults. The UI follows the assignment brief layout: amount input, two currency select boxes, latest-rate button, historical date input, historical-rate button, and required output text below the relevant button action. The UI uses spinners and user-friendly `st.error` and `st.warning` feedback.
-
-## Performance and Caching
-Caching uses Streamlit's in-memory `st.cache_data` with both `ttl` and `max_entries` for exact-match API requests. The trend chart uses a custom in-process interval cache because time-series responses can be large JSON payloads, and repeatedly downloading and parsing the same overlapping dates would be unnecessarily time consuming.
-
-The custom trend cache stores daily rates by currency pair and tracks which date ranges are already covered. When a new trend request overlaps a cached range, the app calls Frankfurter only for the missing non-overlapping date ranges, then combines the cached and newly fetched data before sampling quarterly chart points.
-
-| Data | Cache identity | TTL | `max_entries` | Reasoning |
-| --- | --- | ---: | ---: | --- |
-| Currency list | no arguments | 7 days | 1 | Very small and changes rarely. |
-| Latest unit rate | currency pair | 1 hour | 128 | Rates update daily, while one-hour reuse avoids repeated rerun traffic. |
-| Historical unit rate | currency pair + date | 30 days | 512 | Historical observations are effectively stable and each entry is tiny. |
-| Trend daily window | currency pair + covered date ranges | 24 hours | 64 pairs | Avoids re-fetching overlapping parts of large historical JSON responses. |
-
-The required public functions keep their starter `amount` parameter, but internal cached helpers deliberately exclude it. For example, AUD -> USD amounts of 10, 50, and 100 share the same cached unit rate. Failed API operations raise an internal exception before a cached function returns, so an error is not treated as valid rate data.
-
-The trend implementation samples the latest available observation in each calendar quarter locally. A first request for a pair may still fetch the whole requested window, but later overlapping requests fetch only the missing leading or trailing period.
 
 ## Deployment
-### Live Demo
-https://dsp-at2-26294153.onrender.com
+Live demo: https://dsp-at2-26294153.onrender.com
 
-Current Render configuration for this project:
+Current Render configuration:
 
 - **Service type:** Web Service
 - **Runtime:** Python 3
-- **Build Command:** `pip install streamlit==1.64.0 requests==2.32.5`
-- **Start Command:** `streamlit run app.py --server.address 0.0.0.0 --server.port $PORT`
+- **Build command:** `pip install streamlit==1.64.0 requests==2.32.5`
+- **Start command:** `streamlit run app.py --server.address 0.0.0.0 --server.port $PORT`
 - **Environment variable:** `PYTHON_VERSION=3.13.5`
-- **Other environment variables:** none required by the application
-
-Keeping `PYTHON_VERSION` in Render's environment settings avoids adding an extra `.python-version` file to the assessed five-file submission structure.
 
 ## Citations
-- Assignment API: Frankfurter - https://www.frankfurter.app/
-- Frankfurter API documentation - https://frankfurter.dev/v1/
-- Streamlit documentation - https://docs.streamlit.io/
-- Requests documentation - https://requests.readthedocs.io/
-- Render documentation - https://render.com/docs/
+No external source code was copied into this submission. The following documentation was consulted while implementing the application:
+
+- Frankfurter API: https://www.frankfurter.app/
+- Frankfurter API documentation: https://frankfurter.dev/
+- Streamlit documentation: https://docs.streamlit.io/
+- Requests documentation: https://requests.readthedocs.io/
+- Render documentation: https://render.com/docs/

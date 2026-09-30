@@ -4,79 +4,64 @@ import datetime
 
 import streamlit as st
 
+from currency import format_output
 from frankfurter import (
     get_currencies_list,
     get_historical_rate,
     get_latest_rates,
     get_rate_trend
 )
-from currency import format_output
 
 TREND_YEARS = 3
 DEFAULT_HISTORICAL_DATE = datetime.date(2024, 9, 1)
 MIN_HISTORICAL_DATE = datetime.date(1999, 1, 4)
 
 
-def _get_query_value(name: str, default: str) -> str:
-    """Read one URL query parameter value with a fallback."""
+def _query_value(name: str, default: str) -> str:
     value = st.query_params.get(name, default)
     if isinstance(value, list):
         return value[-1] if value else default
     return value or default
 
 
-def _query_amount(default: float) -> float:
-    """Return the amount stored in the URL, or the default amount."""
+def _saved_amount(default: float) -> float:
     try:
-        amount = float(_get_query_value("amount", str(default)))
+        value = float(_query_value("amount", str(default)))
     except ValueError:
         return default
-    return amount if amount >= 0 else default
+    return value if value >= 0 else default
 
 
-def _query_currency_index(name: str, currencies: list, default_index: int) -> int:
-    """Return the selected currency index stored in the URL."""
-    code = _get_query_value(name, "").strip().upper()
-    if code in currencies:
-        return currencies.index(code)
-    return default_index
+def _saved_currency_index(name: str, currencies: list, default: int) -> int:
+    code = _query_value(name, "").strip().upper()
+    return currencies.index(code) if code in currencies else default
 
 
-def _query_historical_date(default: datetime.date) -> datetime.date:
-    """Return the historical date stored in the URL, or the default date."""
-    today = datetime.date.today()
-    max_date = today - datetime.timedelta(days=1)
+def _saved_date(default: datetime.date) -> datetime.date:
+    latest_allowed = datetime.date.today() - datetime.timedelta(days=1)
     try:
-        selected_date = datetime.date.fromisoformat(
-            _get_query_value("historical_date", default.isoformat())
+        saved = datetime.date.fromisoformat(
+            _query_value("historical_date", default.isoformat())
         )
     except ValueError:
         return default
-    if MIN_HISTORICAL_DATE <= selected_date <= max_date:
-        return selected_date
-    return default
+    return saved if MIN_HISTORICAL_DATE <= saved <= latest_allowed else default
 
 
-def _store_recent_inputs(
-    amount: float,
-    from_currency: str,
-    to_currency: str,
-    historical_date: datetime.date
-) -> None:
-    """Store the current form values in the browser URL for refresh recovery."""
-    recent_inputs = {
+def _save_inputs(amount, from_currency, to_currency, historical_date) -> None:
+    """Keep form inputs in the URL so a browser refresh restores them."""
+    values = {
         "amount": str(round(amount, 2)),
         "from_currency": from_currency,
         "to_currency": to_currency,
         "historical_date": historical_date.isoformat()
     }
-    for key, value in recent_inputs.items():
-        if _get_query_value(key, "") != value:
+    for key, value in values.items():
+        if _query_value(key, "") != value:
             st.query_params[key] = value
 
 
 def _show_result(title: str, result: dict) -> None:
-    """Render one saved conversion result using the required output text."""
     st.subheader(title)
     st.write(
         format_output(
@@ -89,16 +74,18 @@ def _show_result(title: str, result: dict) -> None:
     )
 
 
-def _show_trend(trend: dict, from_currency: str, to_currency: str) -> None:
-    """Render the optional three-year quarterly trend when data is available."""
+def _show_trend(trend: dict) -> None:
     if not trend:
-        st.warning("The conversion was successful, but trend data is unavailable right now.")
+        st.warning(
+            "The conversion was successful, but trend data is unavailable right now."
+        )
         return
-    st.subheader(f"Rate Trend Over the Last {TREND_YEARS} years")
-    chart_data = [
-        {"Date": rate_date, "Rate": rate}
-        for rate_date, rate in sorted(trend.items())
-    ]
+    points = sorted(trend.items())
+    chart_data = {
+        "Date": [rate_date for rate_date, _ in points],
+        "Rate": [rate for _, rate in points],
+    }
+    st.subheader(f"Rate Trend Over the Last {TREND_YEARS} Years")
     with st.spinner("Rendering the 3-year rate trend chart..."):
         st.line_chart(chart_data, x="Date", y="Rate")
 
@@ -116,45 +103,44 @@ if not currencies:
     )
     st.stop()
 
-# Use AUD and USD as the default selected currencies when available.
 aud_index = currencies.index("AUD") if "AUD" in currencies else 0
-usd_index = currencies.index("USD") if "USD" in currencies else min(1, len(currencies) - 1)
-historical_default = _query_historical_date(DEFAULT_HISTORICAL_DATE)
+usd_index = (
+    currencies.index("USD") if "USD" in currencies else min(1, len(currencies) - 1)
+)
 
 amount = st.number_input(
     "Enter the amount to be converted:",
     min_value=0.0,
-    value=_query_amount(50.0),
+    value=_saved_amount(50.0),
     step=1.0,
     format="%.2f"
 )
 from_currency = st.selectbox(
     "From Currency:",
     currencies,
-    index=_query_currency_index("from_currency", currencies, aud_index)
+    index=_saved_currency_index("from_currency", currencies, aud_index)
 )
 to_currency = st.selectbox(
     "To Currency:",
     currencies,
-    index=_query_currency_index("to_currency", currencies, usd_index)
+    index=_saved_currency_index("to_currency", currencies, usd_index)
 )
 latest_clicked = st.button("Get Latest Rate")
-latest_result_area = st.container()
+latest_area = st.container()
 
 historical_date = st.date_input(
     "Select a date for historical rates:",
-    value=historical_default,
+    value=_saved_date(DEFAULT_HISTORICAL_DATE),
     min_value=MIN_HISTORICAL_DATE,
     max_value=datetime.date.today() - datetime.timedelta(days=1)
 )
 historical_clicked = st.button("Conversion Rate")
-historical_result_area = st.container()
+historical_area = st.container()
 
 if latest_clicked:
-    st.session_state.pop("historical_result", None)
-    st.session_state.pop("latest_result", None)
-    st.session_state.pop("latest_trend", None)
-    with latest_result_area:
+    for key in ("latest_result", "latest_trend", "historical_result"):
+        st.session_state.pop(key, None)
+    with latest_area:
         with st.spinner("Fetching the latest exchange rate..."):
             latest_date, latest_rate = get_latest_rates(
                 from_currency,
@@ -174,24 +160,21 @@ if latest_clicked:
                 "rate": latest_rate,
                 "amount": amount
             }
-            _show_result("Latest Conversion Rate", st.session_state["latest_result"])
+            _show_result(
+                "Latest Conversion Rate", st.session_state["latest_result"]
+            )
             with st.spinner("Fetching the 3-year rate trend..."):
                 st.session_state["latest_trend"] = get_rate_trend(
                     from_currency,
                     to_currency,
                     TREND_YEARS
                 )
-            _show_trend(
-                st.session_state["latest_trend"],
-                from_currency,
-                to_currency
-            )
+            _show_trend(st.session_state["latest_trend"])
 
 if historical_clicked:
-    st.session_state.pop("latest_result", None)
-    st.session_state.pop("latest_trend", None)
-    st.session_state.pop("historical_result", None)
-    with historical_result_area:
+    for key in ("latest_result", "latest_trend", "historical_result"):
+        st.session_state.pop(key, None)
+    with historical_area:
         with st.spinner("Fetching the historical exchange rate..."):
             historical_rate = get_historical_rate(
                 from_currency,
@@ -213,18 +196,14 @@ if historical_clicked:
                 "amount": amount
             }
 
+# Keep the last successful result visible during normal Streamlit reruns.
 if "latest_result" in st.session_state and not latest_clicked:
-    latest_result = st.session_state["latest_result"]
-    with latest_result_area:
-        _show_result("Latest Conversion Rate", latest_result)
-        _show_trend(
-            st.session_state.get("latest_trend", {}),
-            latest_result["from_currency"],
-            latest_result["to_currency"]
+    with latest_area:
+        _show_result(
+            "Latest Conversion Rate", st.session_state["latest_result"]
         )
-
+        _show_trend(st.session_state.get("latest_trend", {}))
 if "historical_result" in st.session_state:
-    with historical_result_area:
+    with historical_area:
         _show_result("Conversion Rate", st.session_state["historical_result"])
-
-_store_recent_inputs(amount, from_currency, to_currency, historical_date)
+_save_inputs(amount, from_currency, to_currency, historical_date)

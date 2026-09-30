@@ -1,9 +1,9 @@
-"""Frankfurter API integration and bounded Streamlit caching."""
+"""Frankfurter API calls and small in-memory caches."""
 
 from collections import OrderedDict
 from datetime import date, timedelta
 import json
-from time import time
+from time import monotonic
 from urllib.parse import urlencode
 
 import streamlit as st
@@ -13,22 +13,21 @@ from api import get_url
 BASE_URL = "https://api.frankfurter.app"
 
 CURRENCIES_CACHE_TTL = 7 * 24 * 60 * 60
-CURRENCIES_CACHE_MAX_ENTRIES = 1
 LATEST_RATE_CACHE_TTL = 60 * 60
-LATEST_RATE_CACHE_MAX_ENTRIES = 128
 HISTORICAL_RATE_CACHE_TTL = 30 * 24 * 60 * 60
-HISTORICAL_RATE_CACHE_MAX_ENTRIES = 512
-TREND_CACHE_TTL = 24 * 60 * 60
+TREND_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
 TREND_CACHE_MAX_ENTRIES = 64
-_TREND_WINDOW_CACHE = OrderedDict()
+
+# Each trend entry stores the date ranges already downloaded and their daily
+# rates. This lets overlapping requests fetch only the missing periods.
+_TREND_CACHE = OrderedDict()
 
 
 class _FrankfurterError(RuntimeError):
-    """Internal exception used so failed API calls are not cached as valid data."""
+    """Internal exception so failed requests are never cached as valid data."""
 
 
 def _load_json(url: str) -> dict:
-    """Fetch one Frankfurter URL and return a validated JSON object."""
     status_code, response_text = get_url(url)
     if status_code != 200:
         raise _FrankfurterError(response_text)
@@ -37,12 +36,11 @@ def _load_json(url: str) -> dict:
     except (json.JSONDecodeError, TypeError) as exc:
         raise _FrankfurterError("Frankfurter returned invalid JSON.") from exc
     if not isinstance(payload, dict):
-        raise _FrankfurterError("Frankfurter returned an unexpected response shape.")
+        raise _FrankfurterError("Frankfurter returned an unexpected response.")
     return payload
 
 
 def _normalise_currency(currency: str) -> str:
-    """Normalise and minimally validate a currency code."""
     code = str(currency).strip().upper()
     if len(code) != 3 or not code.isalpha():
         raise _FrankfurterError("Invalid currency code.")
@@ -50,33 +48,29 @@ def _normalise_currency(currency: str) -> str:
 
 
 def _normalise_date(value) -> str:
-    """Return an ISO date string and reject invalid or future dates."""
-    value_text = value.isoformat() if hasattr(value, "isoformat") else str(value)
+    value = value.isoformat() if hasattr(value, "isoformat") else str(value)
     try:
-        parsed_date = date.fromisoformat(value_text)
+        parsed = date.fromisoformat(value)
     except (TypeError, ValueError) as exc:
         raise _FrankfurterError("Invalid date.") from exc
-    if parsed_date > date.today():
+
+    if parsed > date.today():
         raise _FrankfurterError("Historical dates cannot be in the future.")
-    return parsed_date.isoformat()
+    return parsed.isoformat()
 
 
 def _extract_rate(payload: dict, to_currency: str) -> float:
-    """Extract one positive numeric rate from a v1 Frankfurter response."""
     rates = payload.get("rates")
     if not isinstance(rates, dict) or to_currency not in rates:
-        raise _FrankfurterError("The requested rate was not present in the response.")
+        raise _FrankfurterError("The requested rate was not returned.")
+
     rate = rates[to_currency]
     if not isinstance(rate, (int, float)) or rate <= 0:
         raise _FrankfurterError("The requested rate was invalid.")
     return float(rate)
 
 
-@st.cache_data(
-    ttl=CURRENCIES_CACHE_TTL,
-    max_entries=CURRENCIES_CACHE_MAX_ENTRIES,
-    show_spinner=False
-)
+@st.cache_data(ttl=CURRENCIES_CACHE_TTL, max_entries=1, show_spinner=False)
 def _cached_currencies() -> list:
     payload = _load_json(f"{BASE_URL}/currencies")
     currencies = sorted(
@@ -91,19 +85,12 @@ def _cached_currencies() -> list:
 
 def get_currencies_list():
     """
-    Function that will call the relevant API endpoint from Frankfurter in order to get the list of available currencies.
-    After the API call, it will perform a check to see if the API call was successful.
-    If it is the case, it will load the response as JSON, extract the list of currency codes and return it as Python list.
-    Otherwise it will return the value None.
-
-    Parameters
-    ----------
-    None
+    Get the currency codes supported by Frankfurter.
 
     Returns
     -------
     list
-        List of available currencies or None in case of error
+        List of available currencies, or None if the API call fails.
     """
     try:
         return _cached_currencies()
@@ -111,48 +98,31 @@ def get_currencies_list():
         return None
 
 
-@st.cache_data(
-    ttl=LATEST_RATE_CACHE_TTL,
-    max_entries=LATEST_RATE_CACHE_MAX_ENTRIES,
-    show_spinner=False
-)
+@st.cache_data(ttl=LATEST_RATE_CACHE_TTL, max_entries=128, show_spinner=False)
 def _cached_latest_unit_rate(from_currency: str, to_currency: str) -> tuple:
     query = urlencode({"from": from_currency, "to": to_currency})
     payload = _load_json(f"{BASE_URL}/latest?{query}")
     rate_date = payload.get("date")
     if not isinstance(rate_date, str):
-        raise _FrankfurterError("The latest-rate response did not contain a date.")
+        raise _FrankfurterError("The latest-rate response had no date.")
     return rate_date, _extract_rate(payload, to_currency)
 
 
 def get_latest_rates(from_currency, to_currency, amount):
     """
-    Function that will call the relevant API endpoint from Frankfurter in order to get the latest conversion rate between the provided currencies.
-    After the API call, it will perform a check to see if the API call was successful.
-    If it is the case, it will load the response as JSON, extract the latest conversion rate and the date and return them as 2 separate objects.
-    Otherwise it will return the value None twice.
+    Get the latest unit conversion rate and its date.
 
-    The starter signature includes ``amount`` and is intentionally preserved. The
-    downstream request is for a unit rate, so changing only the amount does not
-    create a different cache entry or API request.
-
-    Parameters
-    ----------
-    from_currency : str
-        Code for the origin currency
-    to_currency : str
-        Code for the destination currency
-    amount : float
-        The amount (in origin currency) to be converted
+    ``amount`` remains in the starter signature, but it is intentionally not
+    part of the cache key because one unit rate can be reused for any amount.
 
     Returns
     -------
     str
-        Date of latest FX conversion rate or None in case of error
+        Date of the latest rate, or None on failure.
     float
-        Latest FX conversion rate or None in case of error
+        Latest unit rate, or None on failure.
     """
-    del amount  # Kept in the public signature for starter compatibility.
+    del amount
     try:
         from_code = _normalise_currency(from_currency)
         to_code = _normalise_currency(to_currency)
@@ -165,13 +135,13 @@ def get_latest_rates(from_currency, to_currency, amount):
 
 @st.cache_data(
     ttl=HISTORICAL_RATE_CACHE_TTL,
-    max_entries=HISTORICAL_RATE_CACHE_MAX_ENTRIES,
-    show_spinner=False
+    max_entries=512,
+    show_spinner=False,
 )
 def _cached_historical_unit_rate(
     from_currency: str,
     to_currency: str,
-    from_date: str
+    from_date: str,
 ) -> float:
     query = urlencode({"from": from_currency, "to": to_currency})
     payload = _load_json(f"{BASE_URL}/{from_date}?{query}")
@@ -180,31 +150,17 @@ def _cached_historical_unit_rate(
 
 def get_historical_rate(from_currency, to_currency, from_date, amount):
     """
-    Function that will call the relevant API endpoint from Frankfurter in order to get the conversion rate for the given currencies and date
-    After the API call, it will perform a check to see if the API call was successful.
-    If it is the case, it will load the response as JSON, extract the conversion rate and return it.
-    Otherwise it will return the value None.
+    Get the unit conversion rate for a selected historical date.
 
-    The starter signature includes ``amount`` and is intentionally preserved. The
-    cached value is the unit rate for the currency pair and date.
-
-    Parameters
-    ----------
-    from_currency : str
-        Code for the origin currency
-    to_currency : str
-        Code for the destination currency
-    amount : float
-        The amount (in origin currency) to be converted
-    from_date : str
-        Date when the conversion rate was recorded
+    ``amount`` remains in the starter signature but is excluded from the cache
+    key because it does not change the underlying unit rate.
 
     Returns
     -------
     float
-        Historical FX conversion rate or None in case of error
+        Historical unit rate, or None on failure.
     """
-    del amount  # Kept in the public signature for starter compatibility.
+    del amount
     try:
         from_code = _normalise_currency(from_currency)
         to_code = _normalise_currency(to_currency)
@@ -216,142 +172,99 @@ def get_historical_rate(from_currency, to_currency, from_date, amount):
         return None
 
 
-def _get_trend_cache_entry(from_currency: str, to_currency: str) -> dict:
-    """Return the active trend cache entry for a currency pair."""
-    cache_key = (from_currency, to_currency)
-    now = time()
-    entry = _TREND_WINDOW_CACHE.get(cache_key)
+def _trend_cache_entry(from_currency: str, to_currency: str) -> dict:
+    """Return a live trend entry and keep at most 64 currency pairs."""
+    key = (from_currency, to_currency)
+    now = monotonic()
+    entry = _TREND_CACHE.get(key)
+
     if entry and entry["expires_at"] > now:
-        _TREND_WINDOW_CACHE.move_to_end(cache_key)
+        _TREND_CACHE.move_to_end(key)
         return entry
     if entry:
-        del _TREND_WINDOW_CACHE[cache_key]
-    while len(_TREND_WINDOW_CACHE) >= TREND_CACHE_MAX_ENTRIES:
-        _TREND_WINDOW_CACHE.popitem(last=False)
+        del _TREND_CACHE[key]
+    while len(_TREND_CACHE) >= TREND_CACHE_MAX_ENTRIES:
+        _TREND_CACHE.popitem(last=False)
     entry = {
-        "expires_at": now + TREND_CACHE_TTL,
-        "covered_ranges": [],
-        "daily_rates": {}
+        "expires_at": now + TREND_CACHE_TTL_SECONDS,
+        "ranges": [],
+        "rates": {},
     }
-    _TREND_WINDOW_CACHE[cache_key] = entry
+    _TREND_CACHE[key] = entry
     return entry
 
 
-def _merge_date_ranges(ranges: list) -> list:
+def _merge_ranges(ranges: list) -> list:
     """Merge overlapping or adjacent date ranges."""
-    if not ranges:
-        return []
     merged = []
-    for start_date, end_date in sorted(ranges):
-        if not merged or start_date > merged[-1][1] + timedelta(days=1):
-            merged.append([start_date, end_date])
-            continue
-        merged[-1][1] = max(merged[-1][1], end_date)
-    return [(start_date, end_date) for start_date, end_date in merged]
+    for start, end in sorted(ranges):
+        if not merged or start > merged[-1][1] + timedelta(days=1):
+            merged.append([start, end])
+        else:
+            merged[-1][1] = max(merged[-1][1], end)
+    return [(start, end) for start, end in merged]
 
 
-def _missing_date_ranges(start_date: date, end_date: date, covered_ranges: list) -> list:
-    """Return the parts of a requested range not already covered by cache."""
+def _missing_ranges(start: date, end: date, covered: list) -> list:
+    """Return only the date windows not already represented by covered."""
     missing = []
-    cursor = start_date
-    for covered_start, covered_end in sorted(covered_ranges):
+    cursor = start
+    for covered_start, covered_end in sorted(covered):
         if covered_end < cursor:
             continue
-        if covered_start > end_date:
+        if covered_start > end:
             break
         if covered_start > cursor:
-            missing.append((cursor, min(covered_start - timedelta(days=1), end_date)))
+            missing.append((cursor, min(covered_start - timedelta(days=1), end)))
         cursor = max(cursor, covered_end + timedelta(days=1))
-        if cursor > end_date:
+        if cursor > end:
             break
-    if cursor <= end_date:
-        missing.append((cursor, end_date))
+    if cursor <= end:
+        missing.append((cursor, end))
     return missing
 
 
-def _load_trend_daily_rates(
+def _fetch_trend_window(
     from_currency: str,
     to_currency: str,
-    start_date: date,
-    end_date: date
+    start: date,
+    end: date,
 ) -> dict:
+    """Fetch daily rates for one missing trend period."""
     query = urlencode({"from": from_currency, "to": to_currency})
     payload = _load_json(
-        f"{BASE_URL}/{start_date.isoformat()}..{end_date.isoformat()}?{query}"
+        f"{BASE_URL}/{start.isoformat()}..{end.isoformat()}?{query}"
     )
-    daily_rates = payload.get("rates")
-    if not isinstance(daily_rates, dict):
-        raise _FrankfurterError("The trend response did not contain rate history.")
-    rates = {}
-    for rate_date, day_data in daily_rates.items():
-        if not isinstance(day_data, dict):
+    history = payload.get("rates")
+    if not isinstance(history, dict):
+        raise _FrankfurterError("The trend response had no rate history.")
+    daily_rates = {}
+    for rate_date, values in history.items():
+        if not isinstance(values, dict):
             continue
-        rate = day_data.get(to_currency)
+        rate = values.get(to_currency)
         if not isinstance(rate, (int, float)) or rate <= 0:
             continue
-        parsed_date = date.fromisoformat(rate_date)
-        rates[parsed_date.isoformat()] = float(rate)
-    return rates
-
-
-def _cached_rate_trend(
-    from_currency: str,
-    to_currency: str,
-    start_date: str,
-    end_date: str
-) -> dict:
-    start = date.fromisoformat(start_date)
-    end = date.fromisoformat(end_date)
-    cache_entry = _get_trend_cache_entry(from_currency, to_currency)
-    missing_ranges = _missing_date_ranges(
-        start,
-        end,
-        cache_entry["covered_ranges"]
-    )
-    for missing_start, missing_end in missing_ranges:
-        cache_entry["daily_rates"].update(
-            _load_trend_daily_rates(
-                from_currency,
-                to_currency,
-                missing_start,
-                missing_end
-            )
-        )
-        cache_entry["covered_ranges"] = _merge_date_ranges(
-            cache_entry["covered_ranges"] + [(missing_start, missing_end)]
-        )
-    requested_daily_rates = {
-        rate_date: rate
-        for rate_date, rate in cache_entry["daily_rates"].items()
-        if start_date <= rate_date <= end_date
-    }
-    quarterly = {}
-    for rate_date in sorted(requested_daily_rates):
-        parsed = date.fromisoformat(rate_date)
-        quarter = (parsed.year, (parsed.month - 1) // 3 + 1)
-        quarterly[quarter] = (rate_date, requested_daily_rates[rate_date])
-    if not quarterly:
-        raise _FrankfurterError("No usable trend data was returned.")
-    return {rate_date: rate for rate_date, rate in quarterly.values()}
+        try:
+            daily_rates[date.fromisoformat(rate_date)] = float(rate)
+        except ValueError:
+            continue
+    if not daily_rates:
+        raise _FrankfurterError("No usable trend rates were returned.")
+    return daily_rates
 
 
 def get_rate_trend(from_currency: str, to_currency: str, years: int) -> dict:
     """
-    Fetches historical rates for the past N years on a quarterly basis and returns a dictionary with dates as keys and rates as values.
+    Fetch historical rates for the past N years on a quarterly basis.
 
-    Parameters
-    ----------
-    from_currency : str
-        Code for the origin currency
-    to_currency : str
-        Code for the destination currency
-    years : int
-        Number of years in the past for which to fetch rates
+    Overlapping requests reuse already downloaded daily data and call the API
+    only for missing date ranges.
 
     Returns
     -------
     dict
-        Dictionary containing dates and their corresponding rates
+        Dictionary containing quarterly dates and their corresponding rates.
     """
     try:
         years = int(years)
@@ -362,23 +275,44 @@ def get_rate_trend(from_currency: str, to_currency: str, years: int) -> dict:
         today = date.today()
         try:
             start = today.replace(year=today.year - years)
-        except ValueError:  # 29 February -> 28 February in a non-leap year.
-            start = today.replace(month=2, day=28, year=today.year - years)
+        except ValueError:
+            start = today.replace(year=today.year - years, month=2, day=28)
         if from_code == to_code:
             trend = {}
-            cursor_year, cursor_month = start.year, start.month
-            while (cursor_year, cursor_month) <= (today.year, today.month):
-                trend[f"{cursor_year:04d}-{cursor_month:02d}-01"] = 1.0
-                cursor_month += 3
-                if cursor_month > 12:
-                    cursor_month -= 12
-                    cursor_year += 1
-            return trend
-        return _cached_rate_trend(
-            from_code,
-            to_code,
-            start.isoformat(),
-            today.isoformat()
-        )
+            for year in range(start.year, today.year + 1):
+                for month in (1, 4, 7, 10):
+                    point = date(year, month, 1)
+                    if start <= point <= today:
+                        trend[point.isoformat()] = 1.0
+            return trend or {today.isoformat(): 1.0}
+        entry = _trend_cache_entry(from_code, to_code)
+        missing = _missing_ranges(start, today, entry["ranges"])
+        for missing_start, missing_end in missing:
+            entry["rates"].update(
+                _fetch_trend_window(
+                    from_code,
+                    to_code,
+                    missing_start,
+                    missing_end,
+                )
+            )
+            entry["ranges"] = _merge_ranges(
+                entry["ranges"] + [(missing_start, missing_end)]
+            )
+        requested_rates = {
+            rate_date: rate
+            for rate_date, rate in entry["rates"].items()
+            if start <= rate_date <= today
+        }
+        if not requested_rates:
+            raise _FrankfurterError("No usable trend data was returned.")
+        quarterly = {}
+        for rate_date in sorted(requested_rates):
+            quarter = (rate_date.year, (rate_date.month - 1) // 3 + 1)
+            quarterly[quarter] = (rate_date, requested_rates[rate_date])
+        return {
+            rate_date.isoformat(): rate
+            for rate_date, rate in quarterly.values()
+        }
     except (_FrankfurterError, TypeError, ValueError):
         return {}

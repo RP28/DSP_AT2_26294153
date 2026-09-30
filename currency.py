@@ -1,4 +1,4 @@
-"""Currency calculation and display-formatting helpers."""
+"""Currency calculations and display formatting."""
 
 
 def round_rate(rate):
@@ -22,8 +22,8 @@ def reverse_rate(rate):
     """
     Function that will calculate the inverse rate from the provided input rate.
     It will check if the provided input rate is not equal to zero.
-    If it not the case, it will calculate the inverse rate and round it to 4 decimal places.
-    Otherwise it will return zero.
+    If it not the case, it will calculate the inverse rate and round it to 4
+    decimal places. Otherwise it will return zero.
 
     Parameters
     ----------
@@ -53,7 +53,7 @@ def format_output(date, from_currency, to_currency, rate, amount):
     to_currency: str
         Destination currency code
     rate: float
-        Unit conversion rate
+        Conversion rate
     amount: float
         Amount to be converted
 
@@ -65,6 +65,7 @@ def format_output(date, from_currency, to_currency, rate, amount):
     displayed_rate = round_rate(rate)
     converted_amount = round(amount * rate, 2)
     inverse_rate = reverse_rate(rate)
+
     return (
         f"The conversion rate on {date} from {from_currency} to {to_currency} "
         f"was {displayed_rate}. So {round(amount, 2)} in {from_currency} "
