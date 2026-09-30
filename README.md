@@ -20,7 +20,7 @@ The required starter function signatures are kept unchanged. Latest and historic
 ### Challenges faced
 The main challenge was keeping the app responsive without repeatedly calling the API. Exact latest/historical requests are cached, while the three-year trend uses a small interval cache. If a later trend request overlaps a period already loaded, only the missing date range is requested.
 
-A second challenge was Streamlit's rerun behaviour. `st.session_state` keeps the current result visible during normal widget reruns, and the current input values are also stored in URL query parameters so they can be restored after a browser refresh.
+A second challenge was managing Streamlit's rerun behaviour. Streamlit reruns the script whenever users interact with widgets, so `st.session_state` is used to preserve calculated results during normal reruns. The selected amount, currencies and historical date are also stored in URL query parameters so these inputs can be restored after a browser refresh.
 
 ### Possible future features
 Possible extensions include downloadable conversion history, comparison of multiple currency pairs on one chart, and a user-selectable trend period.
@@ -66,7 +66,6 @@ Then:
 The displayed conversion sentence is produced by `currency.format_output()` in the format required by the assignment brief.
 
 ## Project Structure
-The submission contains only the five files required by the assignment:
 
 - `app.py` - Streamlit user interface, spinners, result display, session-state persistence, and browser-refresh input persistence
 - `api.py` - low-level HTTP GET helper with timeout and network-error handling
