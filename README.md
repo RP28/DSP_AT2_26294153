@@ -78,7 +78,7 @@ sequenceDiagram
         App->>App: _query_amount()
         App->>App: _query_currency_index()
         App->>App: _query_historical_date()
-        App-->>User: Show amount input and currency dropdowns
+        App-->>User: Show amount input, currency dropdowns, latest button, date input, and historical button
     else error response
         F-->>App: None
         App-->>User: Show loading error and stop
@@ -96,6 +96,7 @@ sequenceDiagram
     participant FX as Frankfurter API
 
     User->>App: Click Get Latest Rate
+    App->>App: Clear historical_result
     App->>F: get_latest_rates(from_currency, to_currency, amount)
     F->>F: _normalise_currency(from_currency)
     F->>F: _normalise_currency(to_currency)
@@ -142,6 +143,7 @@ sequenceDiagram
         end
         App->>App: Save latest_trend in st.session_state
         App->>URL: _store_recent_inputs()
+        App-->>User: Show latest text and 3-year trend directly below Get Latest Rate
     else latest rate unavailable
         App-->>User: Show latest-rate error
         App->>URL: _store_recent_inputs()
@@ -159,6 +161,7 @@ sequenceDiagram
     participant FX as Frankfurter API
 
     User->>App: Click Conversion Rate
+    App->>App: Clear latest_result and latest_trend
     App->>F: get_historical_rate(from_currency, to_currency, historical_date, amount)
     F->>F: _normalise_currency(from_currency)
     F->>F: _normalise_currency(to_currency)
@@ -179,6 +182,7 @@ sequenceDiagram
     alt historical rate returned
         App->>App: Save historical_result in st.session_state
         App->>URL: _store_recent_inputs()
+        App-->>User: Show only historical conversion text below Conversion Rate
     else historical rate unavailable
         App-->>User: Show historical-rate error
         App->>URL: _store_recent_inputs()
@@ -214,7 +218,7 @@ sequenceDiagram
 ## Design Decisions
 HTTP calls use a reusable `requests.Session` with a finite timeout. Network failures, non-successful HTTP responses, malformed JSON, missing rate fields, invalid dates, and unavailable trend data are handled without exposing raw exceptions in the Streamlit UI. Same-currency conversions return a unit rate of `1.0` without making a redundant API request.
 
-`st.session_state` stores successful latest/historical results so they remain visible after normal Streamlit reruns. The app also stores the latest amount, selected currencies, and historical date in URL query parameters, so refreshing the browser restores the user's most recent input values as defaults. The UI follows the assignment brief layout: amount input, two currency select boxes, latest-rate button, historical date input, historical-rate button, and required output text below the relevant button action. The UI uses spinners and user-friendly `st.error` and `st.warning` feedback.
+`st.session_state` stores the active latest or historical result so it remains visible after normal Streamlit reruns. Latest and historical results are mutually exclusive: clicking **Get Latest Rate** clears the historical result and shows the latest-rate text plus the three-year trend directly below that button; clicking **Conversion Rate** clears the latest result and trend, then shows only the historical conversion text below the historical button. The app also stores the latest amount, selected currencies, and historical date in URL query parameters, so refreshing the browser restores the user's most recent input values as defaults. The UI follows the assignment brief layout: amount input, two currency select boxes, latest-rate button, historical date input, historical-rate button, and required output text below the relevant button action. The UI uses spinners and user-friendly `st.error` and `st.warning` feedback.
 
 ## Performance and Caching
 Caching uses Streamlit's in-memory `st.cache_data` with both `ttl` and `max_entries` for exact-match API requests. The trend chart uses a custom in-process interval cache because time-series responses can be large JSON payloads, and repeatedly downloading and parsing the same overlapping dates would be unnecessarily time consuming.

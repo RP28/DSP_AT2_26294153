@@ -138,6 +138,7 @@ to_currency = st.selectbox(
     index=_query_currency_index("to_currency", currencies, usd_index)
 )
 latest_clicked = st.button("Get Latest Rate")
+latest_result_area = st.container()
 
 historical_date = st.date_input(
     "Select a date for historical rates:",
@@ -146,65 +147,76 @@ historical_date = st.date_input(
     max_value=datetime.date.today() - datetime.timedelta(days=1)
 )
 historical_clicked = st.button("Conversion Rate")
+historical_result_area = st.container()
 
 if latest_clicked:
-    with st.spinner("Fetching the latest exchange rate..."):
-        latest_date, latest_rate = get_latest_rates(
-            from_currency,
-            to_currency,
-            amount
-        )
-        if latest_date is None or latest_rate is None:
-            st.error(
-                "The latest conversion rate could not be loaded. "
-                "Please try again shortly."
-            )
-        else:
-            st.session_state["latest_result"] = {
-                "date": latest_date,
-                "from_currency": from_currency,
-                "to_currency": to_currency,
-                "rate": latest_rate,
-                "amount": amount
-            }
-            st.session_state["latest_trend"] = get_rate_trend(
+    st.session_state.pop("historical_result", None)
+    st.session_state.pop("latest_result", None)
+    st.session_state.pop("latest_trend", None)
+    with latest_result_area:
+        with st.spinner("Fetching the latest exchange rate..."):
+            latest_date, latest_rate = get_latest_rates(
                 from_currency,
                 to_currency,
-                TREND_YEARS
+                amount
             )
+            if latest_date is None or latest_rate is None:
+                st.error(
+                    "The latest conversion rate could not be loaded. "
+                    "Please try again shortly."
+                )
+            else:
+                st.session_state["latest_result"] = {
+                    "date": latest_date,
+                    "from_currency": from_currency,
+                    "to_currency": to_currency,
+                    "rate": latest_rate,
+                    "amount": amount
+                }
+                st.session_state["latest_trend"] = get_rate_trend(
+                    from_currency,
+                    to_currency,
+                    TREND_YEARS
+                )
+
+if historical_clicked:
+    st.session_state.pop("latest_result", None)
+    st.session_state.pop("latest_trend", None)
+    st.session_state.pop("historical_result", None)
+    with historical_result_area:
+        with st.spinner("Fetching the historical exchange rate..."):
+            historical_rate = get_historical_rate(
+                from_currency,
+                to_currency,
+                historical_date,
+                amount
+            )
+        if historical_rate is None:
+            st.error(
+                "No historical rate could be loaded for that selection. "
+                "Try another date or try again shortly."
+            )
+        else:
+            st.session_state["historical_result"] = {
+                "date": historical_date.isoformat(),
+                "from_currency": from_currency,
+                "to_currency": to_currency,
+                "rate": historical_rate,
+                "amount": amount
+            }
 
 if "latest_result" in st.session_state:
     latest_result = st.session_state["latest_result"]
-    _show_result("Latest Conversion Rate", latest_result)
-    _show_trend(
-        st.session_state.get("latest_trend", {}),
-        latest_result["from_currency"],
-        latest_result["to_currency"]
-    )
-
-if historical_clicked:
-    with st.spinner("Fetching the historical exchange rate..."):
-        historical_rate = get_historical_rate(
-            from_currency,
-            to_currency,
-            historical_date,
-            amount
+    with latest_result_area:
+        _show_result("Latest Conversion Rate", latest_result)
+        _show_trend(
+            st.session_state.get("latest_trend", {}),
+            latest_result["from_currency"],
+            latest_result["to_currency"]
         )
-    if historical_rate is None:
-        st.error(
-            "No historical rate could be loaded for that selection. "
-            "Try another date or try again shortly."
-        )
-    else:
-        st.session_state["historical_result"] = {
-            "date": historical_date.isoformat(),
-            "from_currency": from_currency,
-            "to_currency": to_currency,
-            "rate": historical_rate,
-            "amount": amount
-        }
 
 if "historical_result" in st.session_state:
-    _show_result("Conversion Rate", st.session_state["historical_result"])
+    with historical_result_area:
+        _show_result("Conversion Rate", st.session_state["historical_result"])
 
 _store_recent_inputs(amount, from_currency, to_currency, historical_date)
