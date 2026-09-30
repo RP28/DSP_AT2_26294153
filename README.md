@@ -13,7 +13,7 @@ FX Converter is a Streamlit web application that uses the Frankfurter API to:
 - retrieve the latest conversion rate between two currencies
 - retrieve a historical conversion rate for a selected past date
 - calculate the converted amount and inverse conversion rate
-- display the optional three-year rate trend provided in the starter template
+- display a three-year rate trend
 
 The required starter function signatures are kept unchanged. Latest and historical API requests cache the **unit rate**, so changing only the amount does not create another request for the same currency pair/date.
 

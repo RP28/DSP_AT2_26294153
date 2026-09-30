@@ -85,7 +85,7 @@ def _show_trend(trend: dict) -> None:
         "Date": [rate_date for rate_date, _ in points],
         "Rate": [rate for _, rate in points]
     }
-    st.subheader(f"Rate Trend Over the Last {TREND_YEARS} Years")
+    st.subheader(f"Rate Trend Over the Last {TREND_YEARS} years")
     with st.spinner("Rendering the 3-year rate trend chart..."):
         st.line_chart(chart_data, x="Date", y="Rate")
 
