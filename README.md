@@ -4,6 +4,8 @@
 Name: `Ratnadeep Patra`  
 Student ID: `26294153`
 
+GitHub Repository: https://github.com/RP28/DSP_AT2_26294153
+
 ## Description
 FX Converter is a Streamlit web application that uses the Frankfurter API to list supported currencies, retrieve the latest exchange rate, retrieve a historical rate for a selected date, calculate the converted amount, and calculate the inverse rate. The starter's optional three-year rate-trend function is also implemented and shown after a successful latest-rate lookup.
 
@@ -72,7 +74,7 @@ The trend implementation samples the latest available observation in each calend
 
 ## Deployment
 ### Live Demo
-`<add the Render URL after deployment>`
+`https://dsp-at2-26294153.onrender.com`
 
 Current Render configuration for this project:
 
