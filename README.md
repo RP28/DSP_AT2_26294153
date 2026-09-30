@@ -51,6 +51,229 @@ Then select an amount and two currencies. Use **Get Latest Rate** for the latest
 | `frankfurter.py` | `get_currencies_list`, `get_latest_rates`, `get_historical_rate`, `get_rate_trend` | `_load_json`, `_normalise_currency`, `_normalise_date`, `_extract_rate`, `_cached_currencies`, `_cached_latest_unit_rate`, `_cached_historical_unit_rate`, `_get_trend_cache_entry`, `_merge_date_ranges`, `_missing_date_ranges`, `_load_trend_daily_rates`, `_cached_rate_trend` |
 | `app.py` | - | `_show_result`, `_show_trend` |
 
+## Function Flow and Pseudocode
+The application starts in `app.py`. The Streamlit UI collects user inputs, then calls the public functions in `frankfurter.py` for exchange-rate data and the public functions in `currency.py` for display calculations.
+
+```mermaid
+flowchart TD
+    A[app.py Streamlit page] --> B[get_currencies_list]
+    B --> C[_cached_currencies]
+    C --> D[_load_json]
+    D --> E[get_url]
+
+    A --> F{Get Latest Rate clicked?}
+    F --> G[get_latest_rates]
+    G --> H[_normalise_currency]
+    G --> I{same currency?}
+    I -->|yes| J[return rate 1.0]
+    I -->|no| K[_cached_latest_unit_rate]
+    K --> D
+    K --> L[_extract_rate]
+    G --> M[get_rate_trend]
+    M --> H
+    M --> N{same currency?}
+    N -->|yes| O[build constant 1.0 trend]
+    N -->|no| P[_cached_rate_trend]
+    P --> Q[_get_trend_cache_entry]
+    P --> R[_missing_date_ranges]
+    R --> S{missing ranges?}
+    S -->|yes| T[_load_trend_daily_rates]
+    T --> D
+    S -->|yes| U[_merge_date_ranges]
+    P --> V[sample latest rate in each quarter]
+
+    A --> W{Conversion Rate clicked?}
+    W --> X[get_historical_rate]
+    X --> H
+    X --> Y[_normalise_date]
+    X --> Z{same currency?}
+    Z -->|yes| J
+    Z -->|no| AA[_cached_historical_unit_rate]
+    AA --> D
+    AA --> L
+
+    A --> AB[_show_result]
+    AB --> AC[round_rate]
+    AB --> AD[reverse_rate]
+    AB --> AE[format_output]
+    AE --> AC
+    AE --> AD
+    A --> AF[_show_trend]
+```
+
+### Main UI pseudocode
+```text
+START app.py
+    call get_currencies_list()
+        call _cached_currencies()
+            call _load_json()
+                call get_url()
+        return sorted currency codes or None
+
+    if currencies cannot be loaded
+        show error and stop app
+
+    show amount input
+    show From Currency and To Currency dropdowns
+    use AUD and USD as default selected currencies when available
+
+    if user clicks Get Latest Rate
+        call get_latest_rates(from_currency, to_currency, amount)
+        if latest rate is returned
+            save result in st.session_state
+            call get_rate_trend(from_currency, to_currency, TREND_YEARS)
+            save trend in st.session_state
+        else
+            show error
+
+    if latest result exists in st.session_state
+        call _show_result()
+            call round_rate()
+            call reverse_rate()
+            call format_output()
+                call round_rate()
+                call reverse_rate()
+        call _show_trend()
+
+    show historical date input
+
+    if user clicks Conversion Rate
+        call get_historical_rate(from_currency, to_currency, historical_date, amount)
+        if historical rate is returned
+            save result in st.session_state
+        else
+            show error
+
+    if historical result exists in st.session_state
+        call _show_result()
+END
+```
+
+### API and cache pseudocode
+```text
+get_url(url)
+    send HTTP GET request through the shared requests.Session
+    if request fails or times out
+        return status 0 and an error message
+    if HTTP status is not successful
+        return the HTTP status and a short error message
+    return status code and response text
+
+_load_json(url)
+    call get_url(url)
+    if status is not 200
+        raise _FrankfurterError
+    parse response text as JSON
+    validate that parsed JSON is a dictionary
+    return parsed JSON
+
+_normalise_currency(currency)
+    trim whitespace
+    convert currency code to uppercase
+    check that it is three alphabetic characters
+    return normalised currency code
+
+_normalise_date(value)
+    convert input to ISO date text
+    check that the date is valid
+    reject future dates
+    return normalised date text
+
+_extract_rate(payload, to_currency)
+    read the rates dictionary from the API payload
+    find the requested destination currency
+    check that the rate is a positive number
+    return the rate as a float
+
+get_latest_rates(from_currency, to_currency, amount)
+    normalise both currency codes with _normalise_currency()
+    if both currencies are the same
+        return today's date and rate 1.0
+    call _cached_latest_unit_rate(from_currency, to_currency)
+        call _load_json() for the Frankfurter latest endpoint
+        call _extract_rate()
+        return latest date and unit rate
+    return None values on handled errors
+
+get_historical_rate(from_currency, to_currency, from_date, amount)
+    normalise both currency codes with _normalise_currency()
+    normalise and validate the date with _normalise_date()
+    if both currencies are the same
+        return rate 1.0
+    call _cached_historical_unit_rate(from_currency, to_currency, date)
+        call _load_json() for the Frankfurter date endpoint
+        call _extract_rate()
+        return unit rate
+    return None on handled errors
+
+get_rate_trend(from_currency, to_currency, years)
+    validate years
+    normalise both currency codes with _normalise_currency()
+    calculate start date and end date
+    if both currencies are the same
+        build a quarterly trend where every rate is 1.0
+    otherwise call _cached_rate_trend(from_currency, to_currency, start, end)
+    return trend dictionary or empty dictionary on handled errors
+
+_cached_rate_trend(from_currency, to_currency, start_date, end_date)
+    call _get_trend_cache_entry()
+        return active cache entry for the currency pair
+        expire old entries after the trend TTL
+        remove the oldest pair when the pair limit is reached
+
+    call _missing_date_ranges()
+        compare requested date range with already covered cached ranges
+        return only the date ranges not already stored
+
+    for each missing date range
+        call _load_trend_daily_rates()
+            call _load_json() for only that missing Frankfurter time-series window
+            extract valid daily rates
+        add the new daily rates to the pair cache
+        call _merge_date_ranges()
+            combine overlapping or adjacent cached ranges
+
+    read the requested dates from the combined cached daily rates
+    sample the latest available rate in each calendar quarter
+    return the quarterly trend dictionary
+```
+
+### Display helper pseudocode
+```text
+round_rate(rate)
+    round the rate to 4 decimal places
+    return rounded rate
+
+reverse_rate(rate)
+    if rate is 0
+        return 0
+    divide 1 by the rate
+    call round_rate()
+    return rounded inverse rate
+
+format_output(date, from_currency, to_currency, rate, amount)
+    call round_rate(rate)
+    calculate converted amount as amount * rate
+    call reverse_rate(rate)
+    build the required output sentence
+    return formatted sentence
+
+_show_result(title, result)
+    show the result heading
+    show unit rate metric using round_rate()
+    show converted amount metric
+    show inverse rate metric using reverse_rate()
+    show formatted sentence using format_output()
+
+_show_trend(trend, from_currency, to_currency)
+    if no trend data exists
+        show warning
+        stop rendering the chart
+    convert the trend dictionary into chart rows
+    show the Streamlit line chart
+    show the chart caption
+```
+
 ## Design Decisions
 HTTP calls use a reusable `requests.Session` with a finite timeout. Network failures, non-successful HTTP responses, malformed JSON, missing rate fields, invalid dates, and unavailable trend data are handled without exposing raw exceptions in the Streamlit UI. Same-currency conversions return a unit rate of `1.0` without making a redundant API request.
 

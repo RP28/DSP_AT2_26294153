@@ -67,7 +67,7 @@ if not currencies:
     )
     st.stop()
 
-# Match the assignment example when those currencies are available.
+# Use AUD and USD as the default selected currencies when available.
 aud_index = currencies.index("AUD") if "AUD" in currencies else 0
 usd_index = currencies.index("USD") if "USD" in currencies else min(1, len(currencies) - 1)
 
