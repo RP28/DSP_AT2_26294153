@@ -44,7 +44,6 @@ def _show_trend(trend: dict, from_currency: str, to_currency: str) -> None:
     if not trend:
         st.warning("The conversion was successful, but trend data is unavailable right now.")
         return
-
     st.subheader(f"Rate Trend Over the Last {TREND_YEARS} Years")
     chart_data = [
         {"Date": rate_date, "Rate": rate}
@@ -80,7 +79,6 @@ with st.container(border=True):
         step=1.0,
         format="%.2f",
     )
-
     currency_columns = st.columns(2)
     from_currency = currency_columns[0].selectbox(
         "From Currency:",
@@ -92,7 +90,6 @@ with st.container(border=True):
         currencies,
         index=usd_index,
     )
-
     latest_clicked = st.button("Get Latest Rate", type="primary")
 
 if latest_clicked:
@@ -102,7 +99,6 @@ if latest_clicked:
             to_currency,
             amount,
         )
-
         if latest_date is None or latest_rate is None:
             st.error(
                 "The latest conversion rate could not be loaded. "
@@ -151,7 +147,6 @@ if historical_clicked:
             historical_date,
             amount,
         )
-
     if historical_rate is None:
         st.error(
             "No historical rate could be loaded for that selection. "

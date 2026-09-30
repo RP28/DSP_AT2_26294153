@@ -29,10 +29,8 @@ def get_url(url: str) -> (int, str):
         return 0, "The request to the exchange-rate service timed out."
     except requests.RequestException:
         return 0, "The exchange-rate service could not be reached."
-
     if not response.ok:
         return response.status_code, (
             f"The exchange-rate service returned HTTP {response.status_code}."
         )
-
     return response.status_code, response.text
