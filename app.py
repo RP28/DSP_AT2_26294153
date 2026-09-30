@@ -63,14 +63,19 @@ def _save_inputs(amount, from_currency, to_currency, historical_date) -> None:
 
 def _show_result(title: str, result: dict) -> None:
     st.subheader(title)
-    st.write(
-        format_output(
-            result["date"],
-            result["from_currency"],
-            result["to_currency"],
-            result["rate"],
-            result["amount"]
-        )
+    output_text = format_output(
+        result["date"],
+        result["from_currency"],
+        result["to_currency"],
+        result["rate"],
+        result["amount"]
+    )
+    st.text_area(
+        f"{title} text",
+        value=output_text,
+        height=90,
+        disabled=True,
+        label_visibility="collapsed"
     )
 
 
