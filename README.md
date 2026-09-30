@@ -36,7 +36,7 @@ streamlit run app.py
 Then select an amount and two currencies. Use **Get Latest Rate** for the latest conversion, or select a past date and use **Conversion Rate** for a historical conversion. The displayed sentence follows the format required by the assignment.
 
 ## Project Structure
-- `app.py` - Streamlit UI, input validation, session-state result persistence, loading/error feedback, metrics, and the optional trend chart.
+- `app.py` - Streamlit UI, input validation, session-state result persistence, loading/error feedback, required output text, and the optional trend chart.
 - `api.py` - low-level HTTP GET helper using a reusable `requests.Session` and a finite 10-second timeout.
 - `frankfurter.py` - Frankfurter endpoint integration, response validation, same-currency handling, bounded caching, and trend sampling.
 - `currency.py` - rate rounding, inverse-rate calculation, converted-amount calculation, and required output formatting.
@@ -182,14 +182,6 @@ sequenceDiagram
     participant St as Streamlit UI
 
     App->>App: _show_result(title, result)
-    App->>C: round_rate(result["rate"])
-    C-->>App: rounded unit rate
-    App->>St: Show unit rate metric
-    App->>St: Show converted amount metric
-    App->>C: reverse_rate(result["rate"])
-    C->>C: round_rate(1 / rate)
-    C-->>App: inverse rate
-    App->>St: Show inverse rate metric
     App->>C: format_output(date, from_currency, to_currency, rate, amount)
     C->>C: round_rate(rate)
     C->>C: reverse_rate(rate)
@@ -203,7 +195,6 @@ sequenceDiagram
         App->>St: Show trend unavailable warning
     else trend has data
         App->>St: Show line chart
-        App->>St: Show chart caption
     end
     St-->>User: Display trend section
 ```
@@ -211,7 +202,7 @@ sequenceDiagram
 ## Design Decisions
 HTTP calls use a reusable `requests.Session` with a finite timeout. Network failures, non-successful HTTP responses, malformed JSON, missing rate fields, invalid dates, and unavailable trend data are handled without exposing raw exceptions in the Streamlit UI. Same-currency conversions return a unit rate of `1.0` without making a redundant API request.
 
-`st.session_state` stores successful latest/historical results so they remain visible after normal Streamlit reruns. The UI uses spinners and user-friendly `st.error`, `st.warning`, and `st.info` feedback.
+`st.session_state` stores successful latest/historical results so they remain visible after normal Streamlit reruns. The UI follows the assignment brief layout: amount input, two currency select boxes, latest-rate button, historical date input, historical-rate button, and required output text below the relevant button action. The UI uses spinners and user-friendly `st.error` and `st.warning` feedback.
 
 ## Performance and Caching
 Caching uses Streamlit's in-memory `st.cache_data` with both `ttl` and `max_entries` for exact-match API requests. The trend chart uses a custom in-process interval cache because time-series responses can be large JSON payloads, and repeatedly downloading and parsing the same overlapping dates would be unnecessarily time consuming.
