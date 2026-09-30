@@ -99,7 +99,8 @@ def _show_trend(trend: dict, from_currency: str, to_currency: str) -> None:
         {"Date": rate_date, "Rate": rate}
         for rate_date, rate in sorted(trend.items())
     ]
-    st.line_chart(chart_data, x="Date", y="Rate")
+    with st.spinner("Rendering the 3-year rate trend chart..."):
+        st.line_chart(chart_data, x="Date", y="Rate")
 
 
 st.set_page_config(page_title="FX Converter", layout="centered")
