@@ -36,7 +36,7 @@ streamlit run app.py
 Then select an amount and two currencies. Use **Get Latest Rate** for the latest conversion, or select a past date and use **Conversion Rate** for a historical conversion. The displayed sentence follows the format required by the assignment.
 
 ## Project Structure
-- `app.py` - Streamlit UI, input validation, session-state result persistence, loading/error feedback, required output text, and the optional trend chart.
+- `app.py` - Streamlit UI, input validation, browser-refresh input persistence, session-state result persistence, loading/error feedback, required output text, and the optional trend chart.
 - `api.py` - low-level HTTP GET helper using a reusable `requests.Session` and a finite 10-second timeout.
 - `frankfurter.py` - Frankfurter endpoint integration, response validation, same-currency handling, bounded caching, and trend sampling.
 - `currency.py` - rate rounding, inverse-rate calculation, converted-amount calculation, and required output formatting.
@@ -49,7 +49,7 @@ Then select an amount and two currencies. Use **Get Latest Rate** for the latest
 | `api.py` | `get_url` | - |
 | `currency.py` | `round_rate`, `reverse_rate`, `format_output` | - |
 | `frankfurter.py` | `get_currencies_list`, `get_latest_rates`, `get_historical_rate`, `get_rate_trend` | `_load_json`, `_normalise_currency`, `_normalise_date`, `_extract_rate`, `_cached_currencies`, `_cached_latest_unit_rate`, `_cached_historical_unit_rate`, `_get_trend_cache_entry`, `_merge_date_ranges`, `_missing_date_ranges`, `_load_trend_daily_rates`, `_cached_rate_trend` |
-| `app.py` | - | `_show_result`, `_show_trend` |
+| `app.py` | - | `_get_query_value`, `_query_amount`, `_query_currency_index`, `_query_historical_date`, `_store_recent_inputs`, `_show_result`, `_show_trend` |
 
 ## Function Sequence Diagrams
 ### Currency loading
@@ -57,6 +57,7 @@ Then select an amount and two currencies. Use **Get Latest Rate** for the latest
 sequenceDiagram
     actor User
     participant App as app.py
+    participant URL as Browser URL
     participant F as frankfurter.py
     participant Api as api.py
     participant FX as Frankfurter API
@@ -72,6 +73,11 @@ sequenceDiagram
     alt valid response
         F-->>F: Parse JSON and sort currency codes
         F-->>App: currencies
+        App->>URL: Read saved input query parameters
+        App->>App: _get_query_value()
+        App->>App: _query_amount()
+        App->>App: _query_currency_index()
+        App->>App: _query_historical_date()
         App-->>User: Show amount input and currency dropdowns
     else error response
         F-->>App: None
@@ -84,6 +90,7 @@ sequenceDiagram
 sequenceDiagram
     actor User
     participant App as app.py
+    participant URL as Browser URL
     participant F as frankfurter.py
     participant Api as api.py
     participant FX as Frankfurter API
@@ -134,8 +141,10 @@ sequenceDiagram
             F-->>App: trend dictionary
         end
         App->>App: Save latest_trend in st.session_state
+        App->>URL: _store_recent_inputs()
     else latest rate unavailable
         App-->>User: Show latest-rate error
+        App->>URL: _store_recent_inputs()
     end
 ```
 
@@ -144,6 +153,7 @@ sequenceDiagram
 sequenceDiagram
     actor User
     participant App as app.py
+    participant URL as Browser URL
     participant F as frankfurter.py
     participant Api as api.py
     participant FX as Frankfurter API
@@ -168,8 +178,10 @@ sequenceDiagram
 
     alt historical rate returned
         App->>App: Save historical_result in st.session_state
+        App->>URL: _store_recent_inputs()
     else historical rate unavailable
         App-->>User: Show historical-rate error
+        App->>URL: _store_recent_inputs()
     end
 ```
 
@@ -202,7 +214,7 @@ sequenceDiagram
 ## Design Decisions
 HTTP calls use a reusable `requests.Session` with a finite timeout. Network failures, non-successful HTTP responses, malformed JSON, missing rate fields, invalid dates, and unavailable trend data are handled without exposing raw exceptions in the Streamlit UI. Same-currency conversions return a unit rate of `1.0` without making a redundant API request.
 
-`st.session_state` stores successful latest/historical results so they remain visible after normal Streamlit reruns. The UI follows the assignment brief layout: amount input, two currency select boxes, latest-rate button, historical date input, historical-rate button, and required output text below the relevant button action. The UI uses spinners and user-friendly `st.error` and `st.warning` feedback.
+`st.session_state` stores successful latest/historical results so they remain visible after normal Streamlit reruns. The app also stores the latest amount, selected currencies, and historical date in URL query parameters, so refreshing the browser restores the user's most recent input values as defaults. The UI follows the assignment brief layout: amount input, two currency select boxes, latest-rate button, historical date input, historical-rate button, and required output text below the relevant button action. The UI uses spinners and user-friendly `st.error` and `st.warning` feedback.
 
 ## Performance and Caching
 Caching uses Streamlit's in-memory `st.cache_data` with both `ttl` and `max_entries` for exact-match API requests. The trend chart uses a custom in-process interval cache because time-series responses can be large JSON payloads, and repeatedly downloading and parsing the same overlapping dates would be unnecessarily time consuming.

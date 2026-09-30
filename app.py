@@ -14,6 +14,65 @@ from currency import format_output
 
 TREND_YEARS = 3
 DEFAULT_HISTORICAL_DATE = datetime.date(2024, 9, 1)
+MIN_HISTORICAL_DATE = datetime.date(1999, 1, 4)
+
+
+def _get_query_value(name: str, default: str) -> str:
+    """Read one URL query parameter value with a fallback."""
+    value = st.query_params.get(name, default)
+    if isinstance(value, list):
+        return value[-1] if value else default
+    return value or default
+
+
+def _query_amount(default: float) -> float:
+    """Return the amount stored in the URL, or the default amount."""
+    try:
+        amount = float(_get_query_value("amount", str(default)))
+    except ValueError:
+        return default
+    return amount if amount >= 0 else default
+
+
+def _query_currency_index(name: str, currencies: list, default_index: int) -> int:
+    """Return the selected currency index stored in the URL."""
+    code = _get_query_value(name, "").strip().upper()
+    if code in currencies:
+        return currencies.index(code)
+    return default_index
+
+
+def _query_historical_date(default: datetime.date) -> datetime.date:
+    """Return the historical date stored in the URL, or the default date."""
+    today = datetime.date.today()
+    max_date = today - datetime.timedelta(days=1)
+    try:
+        selected_date = datetime.date.fromisoformat(
+            _get_query_value("historical_date", default.isoformat())
+        )
+    except ValueError:
+        return default
+    if MIN_HISTORICAL_DATE <= selected_date <= max_date:
+        return selected_date
+    return default
+
+
+def _store_recent_inputs(
+    amount: float,
+    from_currency: str,
+    to_currency: str,
+    historical_date: datetime.date
+) -> None:
+    """Store the current form values in the browser URL for refresh recovery."""
+    recent_inputs = {
+        "amount": str(round(amount, 2)),
+        "from_currency": from_currency,
+        "to_currency": to_currency,
+        "historical_date": historical_date.isoformat()
+    }
+    for key, value in recent_inputs.items():
+        if _get_query_value(key, "") != value:
+            st.query_params[key] = value
 
 
 def _show_result(title: str, result: dict) -> None:
@@ -59,30 +118,31 @@ if not currencies:
 # Use AUD and USD as the default selected currencies when available.
 aud_index = currencies.index("AUD") if "AUD" in currencies else 0
 usd_index = currencies.index("USD") if "USD" in currencies else min(1, len(currencies) - 1)
+historical_default = _query_historical_date(DEFAULT_HISTORICAL_DATE)
 
 amount = st.number_input(
     "Enter the amount to be converted:",
     min_value=0.0,
-    value=50.0,
+    value=_query_amount(50.0),
     step=1.0,
     format="%.2f"
 )
 from_currency = st.selectbox(
     "From Currency:",
     currencies,
-    index=aud_index
+    index=_query_currency_index("from_currency", currencies, aud_index)
 )
 to_currency = st.selectbox(
     "To Currency:",
     currencies,
-    index=usd_index
+    index=_query_currency_index("to_currency", currencies, usd_index)
 )
 latest_clicked = st.button("Get Latest Rate")
 
 historical_date = st.date_input(
     "Select a date for historical rates:",
-    value=DEFAULT_HISTORICAL_DATE,
-    min_value=datetime.date(1999, 1, 4),
+    value=historical_default,
+    min_value=MIN_HISTORICAL_DATE,
     max_value=datetime.date.today() - datetime.timedelta(days=1)
 )
 historical_clicked = st.button("Conversion Rate")
@@ -146,3 +206,5 @@ if historical_clicked:
 
 if "historical_result" in st.session_state:
     _show_result("Conversion Rate", st.session_state["historical_result"])
+
+_store_recent_inputs(amount, from_currency, to_currency, historical_date)
