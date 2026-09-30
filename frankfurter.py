@@ -166,12 +166,12 @@ def get_latest_rates(from_currency, to_currency, amount):
 @st.cache_data(
     ttl=HISTORICAL_RATE_CACHE_TTL,
     max_entries=HISTORICAL_RATE_CACHE_MAX_ENTRIES,
-    show_spinner=False,
+    show_spinner=False
 )
 def _cached_historical_unit_rate(
     from_currency: str,
     to_currency: str,
-    from_date: str,
+    from_date: str
 ) -> float:
     query = urlencode({"from": from_currency, "to": to_currency})
     payload = _load_json(f"{BASE_URL}/{from_date}?{query}")
@@ -231,7 +231,7 @@ def _get_trend_cache_entry(from_currency: str, to_currency: str) -> dict:
     entry = {
         "expires_at": now + TREND_CACHE_TTL,
         "covered_ranges": [],
-        "daily_rates": {},
+        "daily_rates": {}
     }
     _TREND_WINDOW_CACHE[cache_key] = entry
     return entry
@@ -273,7 +273,7 @@ def _load_trend_daily_rates(
     from_currency: str,
     to_currency: str,
     start_date: date,
-    end_date: date,
+    end_date: date
 ) -> dict:
     query = urlencode({"from": from_currency, "to": to_currency})
     payload = _load_json(
@@ -298,7 +298,7 @@ def _cached_rate_trend(
     from_currency: str,
     to_currency: str,
     start_date: str,
-    end_date: str,
+    end_date: str
 ) -> dict:
     start = date.fromisoformat(start_date)
     end = date.fromisoformat(end_date)
@@ -306,7 +306,7 @@ def _cached_rate_trend(
     missing_ranges = _missing_date_ranges(
         start,
         end,
-        cache_entry["covered_ranges"],
+        cache_entry["covered_ranges"]
     )
     for missing_start, missing_end in missing_ranges:
         cache_entry["daily_rates"].update(
@@ -314,7 +314,7 @@ def _cached_rate_trend(
                 from_currency,
                 to_currency,
                 missing_start,
-                missing_end,
+                missing_end
             )
         )
         cache_entry["covered_ranges"] = _merge_date_ranges(
@@ -378,7 +378,7 @@ def get_rate_trend(from_currency: str, to_currency: str, years: int) -> dict:
             from_code,
             to_code,
             start.isoformat(),
-            today.isoformat(),
+            today.isoformat()
         )
     except (_FrankfurterError, TypeError, ValueError):
         return {}
