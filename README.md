@@ -35,6 +35,23 @@ streamlit run app.py
 
 Then select an amount and two currencies. Use **Get Latest Rate** for the latest conversion, or select a past date and use **Conversion Rate** for a historical conversion. The displayed sentence follows the format required by the assignment.
 
+## Create the Submission ZIP
+From the project folder,
+
+macOS/Linux:
+
+```bash
+zip dsp_at2_26294153.zip api.py app.py currency.py frankfurter.py README.md
+unzip -l dsp_at2_26294153.zip
+```
+
+Windows PowerShell:
+
+```powershell
+Compress-Archive -Path api.py, app.py, currency.py, frankfurter.py, README.md -DestinationPath dsp_at2_26294153.zip -Force
+tar -tf dsp_at2_26294153.zip
+```
+
 ## Project Structure
 - `app.py` - Streamlit UI, input validation, browser-refresh input persistence, session-state result persistence, loading/error feedback, required output text, and the optional trend chart.
 - `api.py` - low-level HTTP GET helper using a reusable `requests.Session` and a finite 10-second timeout.
