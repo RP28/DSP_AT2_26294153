@@ -136,12 +136,12 @@ def get_latest_rates(from_currency, to_currency, amount):
 @st.cache_data(
     ttl=HISTORICAL_RATE_CACHE_TTL,
     max_entries=512,
-    show_spinner=False,
+    show_spinner=False
 )
 def _cached_historical_unit_rate(
     from_currency: str,
     to_currency: str,
-    from_date: str,
+    from_date: str
 ) -> float:
     query = urlencode({"from": from_currency, "to": to_currency})
     payload = _load_json(f"{BASE_URL}/{from_date}?{query}")
@@ -188,7 +188,7 @@ def _trend_cache_entry(from_currency: str, to_currency: str) -> dict:
     entry = {
         "expires_at": now + TREND_CACHE_TTL_SECONDS,
         "ranges": [],
-        "rates": {},
+        "rates": {}
     }
     _TREND_CACHE[key] = entry
     return entry
@@ -228,7 +228,7 @@ def _fetch_trend_window(
     from_currency: str,
     to_currency: str,
     start: date,
-    end: date,
+    end: date
 ) -> dict:
     """Fetch daily rates for one missing trend period."""
     query = urlencode({"from": from_currency, "to": to_currency})
@@ -293,7 +293,7 @@ def get_rate_trend(from_currency: str, to_currency: str, years: int) -> dict:
                     from_code,
                     to_code,
                     missing_start,
-                    missing_end,
+                    missing_end
                 )
             )
             entry["ranges"] = _merge_ranges(

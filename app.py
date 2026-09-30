@@ -83,7 +83,7 @@ def _show_trend(trend: dict) -> None:
     points = sorted(trend.items())
     chart_data = {
         "Date": [rate_date for rate_date, _ in points],
-        "Rate": [rate for _, rate in points],
+        "Rate": [rate for _, rate in points]
     }
     st.subheader(f"Rate Trend Over the Last {TREND_YEARS} Years")
     with st.spinner("Rendering the 3-year rate trend chart..."):

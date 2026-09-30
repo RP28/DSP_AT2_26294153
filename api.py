@@ -30,6 +30,6 @@ def get_url(url: str) -> (int, str):
     if not response.ok:
         return (
             response.status_code,
-            f"The exchange-rate service returned HTTP {response.status_code}.",
+            f"The exchange-rate service returned HTTP {response.status_code}."
         )
     return response.status_code, response.text
