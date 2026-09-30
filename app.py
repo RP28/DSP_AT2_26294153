@@ -160,24 +160,31 @@ if latest_clicked:
                 to_currency,
                 amount
             )
-            if latest_date is None or latest_rate is None:
-                st.error(
-                    "The latest conversion rate could not be loaded. "
-                    "Please try again shortly."
-                )
-            else:
-                st.session_state["latest_result"] = {
-                    "date": latest_date,
-                    "from_currency": from_currency,
-                    "to_currency": to_currency,
-                    "rate": latest_rate,
-                    "amount": amount
-                }
+        if latest_date is None or latest_rate is None:
+            st.error(
+                "The latest conversion rate could not be loaded. "
+                "Please try again shortly."
+            )
+        else:
+            st.session_state["latest_result"] = {
+                "date": latest_date,
+                "from_currency": from_currency,
+                "to_currency": to_currency,
+                "rate": latest_rate,
+                "amount": amount
+            }
+            _show_result("Latest Conversion Rate", st.session_state["latest_result"])
+            with st.spinner("Fetching the 3-year rate trend..."):
                 st.session_state["latest_trend"] = get_rate_trend(
                     from_currency,
                     to_currency,
                     TREND_YEARS
                 )
+            _show_trend(
+                st.session_state["latest_trend"],
+                from_currency,
+                to_currency
+            )
 
 if historical_clicked:
     st.session_state.pop("latest_result", None)
@@ -205,7 +212,7 @@ if historical_clicked:
                 "amount": amount
             }
 
-if "latest_result" in st.session_state:
+if "latest_result" in st.session_state and not latest_clicked:
     latest_result = st.session_state["latest_result"]
     with latest_result_area:
         _show_result("Latest Conversion Rate", latest_result)
