@@ -102,10 +102,9 @@ def _initialise_state(currencies: list[str]) -> None:
             )
         except (TypeError, ValueError):
             st.session_state.amount = 50.0
-
     for key, default in (
         ("from_currency", default_from),
-        ("to_currency", default_to),
+        ("to_currency", default_to)
     ):
         if key not in st.session_state:
             st.session_state[key] = (
@@ -113,7 +112,6 @@ def _initialise_state(currencies: list[str]) -> None:
                 if (value := str(params.get(key, default)).upper()) in currencies
                 else default
             )
-
     if "historical_date" not in st.session_state:
         try:
             saved_date = date.fromisoformat(
@@ -151,14 +149,14 @@ def _cached_latest_rate(from_currency: str, to_currency: str):
 def _cached_historical_rate(
     from_currency: str,
     to_currency: str,
-    historical_date: str,
+    historical_date: str
 ):
     if (
         result := get_historical_rate(
             from_currency,
             to_currency,
             historical_date,
-            1.0,
+            1.0
         )
     ) is None:
         raise RuntimeError
@@ -171,7 +169,7 @@ def _cached_rate_trend(from_currency: str, to_currency: str):
         result := get_rate_trend(
             from_currency,
             to_currency,
-            TREND_YEARS,
+            TREND_YEARS
         )
     ):
         raise RuntimeError
@@ -182,7 +180,7 @@ def _fetch_latest(
     area,
     from_currency: str,
     to_currency: str,
-    amount: float,
+    amount: float
 ) -> None:
     """Fetch and store the latest conversion and trend."""
     _clear_results()
@@ -192,7 +190,6 @@ def _fetch_latest(
                 from_currency,
                 to_currency
             )
-
         st.session_state.latest_result = (
             latest_date,
             from_currency,
@@ -221,7 +218,7 @@ def _fetch_historical(
     historical_date: date,
     from_currency: str,
     to_currency: str,
-    amount: float,
+    amount: float
 ) -> None:
     """Fetch and store a historical conversion."""
     _clear_results()
@@ -285,10 +282,8 @@ def _show_trend(trend: dict) -> None:
             "The conversion was successful, but trend data is unavailable right now."
         )
         return
-
     dates, rates = zip(*sorted(trend.items()))
     st.subheader(f"Rate Trend Over the Last {TREND_YEARS} years")
-
     with st.spinner("Rendering the 3-year rate trend chart..."):
         st.line_chart(
             {"Date": dates, "Rate": rates},

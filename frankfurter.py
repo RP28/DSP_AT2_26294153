@@ -13,44 +13,6 @@ class _FrankfurterError(RuntimeError):
     """Internal exception used to handle invalid API responses consistently."""
 
 
-def _load_json(url: str) -> dict:
-    status_code, response_text = get_url(url)
-    if status_code != 200:
-        raise _FrankfurterError(response_text)
-    try:
-        payload = json.loads(response_text)
-    except (json.JSONDecodeError, TypeError) as exc:
-        raise _FrankfurterError("Frankfurter returned invalid JSON.") from exc
-    if not isinstance(payload, dict):
-        raise _FrankfurterError("Frankfurter returned an unexpected response.")
-    return payload
-
-
-def _normalise_currency(currency: str) -> str:
-    if len(code := str(currency).strip().upper()) != 3 or not code.isalpha():
-        raise _FrankfurterError("Invalid currency code.")
-    return code
-
-
-def _normalise_date(value) -> str:
-    value = value.isoformat() if hasattr(value, "isoformat") else str(value)
-    try:
-        parsed = date.fromisoformat(value)
-    except (TypeError, ValueError) as exc:
-        raise _FrankfurterError("Invalid date.") from exc
-    if parsed > date.today():
-        raise _FrankfurterError("Historical dates cannot be in the future.")
-    return parsed.isoformat()
-
-
-def _extract_rate(payload: dict, to_currency: str) -> float:
-    if not isinstance(rates := payload.get("rates"), dict) or to_currency not in rates:
-        raise _FrankfurterError("The requested rate was not returned.")
-    if not isinstance(rate := rates[to_currency], (int, float)) or rate <= 0:
-        raise _FrankfurterError("The requested rate was invalid.")
-    return float(rate)
-
-
 def get_currencies_list():
     """
     Get the currency codes supported by Frankfurter.
@@ -93,7 +55,6 @@ def get_latest_rates(from_currency, to_currency, amount):
         to_code = _normalise_currency(to_currency)
         if from_code == to_code:
             return date.today().isoformat(), 1.0
-
         query = urlencode({"from": from_code, "to": to_code})
         payload = _load_json(f"{BASE_URL}/latest?{query}")
         if not isinstance(rate_date := payload.get("date"), str):
@@ -101,16 +62,6 @@ def get_latest_rates(from_currency, to_currency, amount):
         return rate_date, _extract_rate(payload, to_code)
     except _FrankfurterError:
         return None, None
-
-
-def _historical_unit_rate(from_currency: str, to_currency: str, from_date: str):
-    """Return the effective date and unit rate from the historical endpoint."""
-    query = urlencode({"from": from_currency, "to": to_currency})
-    payload = _load_json(f"{BASE_URL}/{from_date}?{query}")
-    return (
-        rate_date if isinstance(rate_date := payload.get("date"), str) else from_date,
-        _extract_rate(payload, to_currency)
-    )
 
 
 def get_historical_rate(from_currency, to_currency, from_date, amount):
@@ -140,34 +91,6 @@ def get_historical_rate(from_currency, to_currency, from_date, amount):
         return None
 
 
-def _quarterly_dates(years: int) -> list:
-    """Return quarter-start dates covering the requested number of years."""
-    today = date.today()
-    try:
-        start = today.replace(year=today.year - years)
-    except ValueError:
-        start = today.replace(year=today.year - years, month=2, day=28)
-
-    quarter_month = ((start.month - 1) // 3) * 3 + 1
-    point = date(start.year, quarter_month, 1)
-    if point < start:
-        point = (
-            date(start.year + 1, 1, 1)
-            if quarter_month == 10
-            else date(start.year, quarter_month + 3, 1)
-        )
-
-    points = []
-    while point <= today:
-        points.append(point)
-        point = (
-            date(point.year + 1, 1, 1)
-            if point.month == 10
-            else date(point.year, point.month + 3, 1)
-        )
-    return points
-
-
 def get_rate_trend(from_currency: str, to_currency: str, years: int) -> dict:
     """
     Fetch historical rates for the past N years on a quarterly basis.
@@ -186,13 +109,85 @@ def get_rate_trend(from_currency: str, to_currency: str, years: int) -> dict:
         from_code = _normalise_currency(from_currency)
         to_code = _normalise_currency(to_currency)
         points = _quarterly_dates(years)
-
         if from_code == to_code:
             return {point.isoformat(): 1.0 for point in points}
-
         return dict(
             _historical_unit_rate(from_code, to_code, point.isoformat())
             for point in points
         )
     except (_FrankfurterError, TypeError, ValueError):
         return {}
+    
+
+def _load_json(url: str) -> dict:
+    status_code, response_text = get_url(url)
+    if status_code != 200:
+        raise _FrankfurterError(response_text)
+    try:
+        payload = json.loads(response_text)
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise _FrankfurterError("Frankfurter returned invalid JSON.") from exc
+    if not isinstance(payload, dict):
+        raise _FrankfurterError("Frankfurter returned an unexpected response.")
+    return payload
+
+
+def _normalise_currency(currency: str) -> str:
+    if len(code := str(currency).strip().upper()) != 3 or not code.isalpha():
+        raise _FrankfurterError("Invalid currency code.")
+    return code
+
+
+def _normalise_date(value) -> str:
+    value = value.isoformat() if hasattr(value, "isoformat") else str(value)
+    try:
+        parsed = date.fromisoformat(value)
+    except (TypeError, ValueError) as exc:
+        raise _FrankfurterError("Invalid date.") from exc
+    if parsed > date.today():
+        raise _FrankfurterError("Historical dates cannot be in the future.")
+    return parsed.isoformat()
+
+
+def _extract_rate(payload: dict, to_currency: str) -> float:
+    if not isinstance(rates := payload.get("rates"), dict) or to_currency not in rates:
+        raise _FrankfurterError("The requested rate was not returned.")
+    if not isinstance(rate := rates[to_currency], (int, float)) or rate <= 0:
+        raise _FrankfurterError("The requested rate was invalid.")
+    return float(rate)
+
+
+def _historical_unit_rate(from_currency: str, to_currency: str, from_date: str):
+    """Return the effective date and unit rate from the historical endpoint."""
+    query = urlencode({"from": from_currency, "to": to_currency})
+    payload = _load_json(f"{BASE_URL}/{from_date}?{query}")
+    return (
+        rate_date if isinstance(rate_date := payload.get("date"), str) else from_date,
+        _extract_rate(payload, to_currency)
+    )
+
+
+def _quarterly_dates(years: int) -> list:
+    """Return quarter-start dates covering the requested number of years."""
+    today = date.today()
+    try:
+        start = today.replace(year=today.year - years)
+    except ValueError:
+        start = today.replace(year=today.year - years, month=2, day=28)
+    quarter_month = ((start.month - 1) // 3) * 3 + 1
+    point = date(start.year, quarter_month, 1)
+    if point < start:
+        point = (
+            date(start.year + 1, 1, 1)
+            if quarter_month == 10
+            else date(start.year, quarter_month + 3, 1)
+        )
+    points = []
+    while point <= today:
+        points.append(point)
+        point = (
+            date(point.year + 1, 1, 1)
+            if point.month == 10
+            else date(point.year, point.month + 3, 1)
+        )
+    return points
