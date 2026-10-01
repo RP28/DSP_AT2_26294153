@@ -80,11 +80,11 @@ def main() -> None:
             to_currency,
             amount
         )
-    if result := st.session_state.get("latest_result"):
+    if not latest_clicked and (result := st.session_state.get("latest_result")):
         with latest_area:
             _show_result("Latest Conversion Rate", result)
             _show_trend(st.session_state.get("latest_trend", {}))
-    if result := st.session_state.get("historical_result"):
+    if not historical_clicked and (result := st.session_state.get("historical_result")):
         with historical_area:
             _show_result("Conversion Rate", result)
 
@@ -184,29 +184,34 @@ def _fetch_latest(
 ) -> None:
     """Fetch and store the latest conversion and trend."""
     _clear_results()
-    try:
-        with st.spinner("Fetching the latest exchange rate..."):
-            latest_date, latest_rate = _cached_latest_rate(
-                from_currency,
-                to_currency
-            )
-        st.session_state.latest_result = (
-            latest_date,
-            from_currency,
-            to_currency,
-            latest_rate,
-            amount
-        )
+    with area:
         try:
-            with st.spinner("Fetching the 3-year rate trend..."):
-                st.session_state.latest_trend = _cached_rate_trend(
+            with st.spinner("Fetching the latest exchange rate..."):
+                latest_date, latest_rate = _cached_latest_rate(
                     from_currency,
                     to_currency
                 )
+            latest_result = (
+                latest_date,
+                from_currency,
+                to_currency,
+                latest_rate,
+                amount
+            )
+            st.session_state.latest_result = latest_result
+            _show_result("Latest Conversion Rate", latest_result)
+            try:
+                with st.spinner("Fetching the 3-year rate trend..."):
+                    latest_trend = _cached_rate_trend(
+                        from_currency,
+                        to_currency
+                    )
+                st.session_state.latest_trend = latest_trend
+                _show_trend(latest_trend)
+            except RuntimeError:
+                st.session_state.latest_trend = {}
+                _show_trend({})
         except RuntimeError:
-            st.session_state.latest_trend = {}
-    except RuntimeError:
-        with area:
             st.error(
                 "The latest conversion rate could not be loaded. "
                 "Please try again shortly."
@@ -222,22 +227,24 @@ def _fetch_historical(
 ) -> None:
     """Fetch and store a historical conversion."""
     _clear_results()
-    try:
-        with st.spinner("Fetching the historical exchange rate..."):
-            historical_rate = _cached_historical_rate(
+    with area:
+        try:
+            with st.spinner("Fetching the historical exchange rate..."):
+                historical_rate = _cached_historical_rate(
+                    from_currency,
+                    to_currency,
+                    historical_date.isoformat()
+                )
+            historical_result = (
+                historical_date.isoformat(),
                 from_currency,
                 to_currency,
-                historical_date.isoformat()
+                historical_rate,
+                amount
             )
-        st.session_state.historical_result = (
-            historical_date.isoformat(),
-            from_currency,
-            to_currency,
-            historical_rate,
-            amount
-        )
-    except RuntimeError:
-        with area:
+            st.session_state.historical_result = historical_result
+            _show_result("Conversion Rate", historical_result)
+        except RuntimeError:
             st.error(
                 "No historical rate could be loaded for that selection. "
                 "Try another date or try again shortly."
