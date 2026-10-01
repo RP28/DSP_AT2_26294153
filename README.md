@@ -158,6 +158,7 @@ sequenceDiagram
 - `main()` contains the application flow in the same order as the displayed interface, while supporting API, state, caching, and rendering logic is kept in helper functions.
 - Public functions are defined first within each module so the main functionality and intended module interface are immediately visible. Internal helper functions are placed afterwards to keep the implementation details separate from the functions intended to be called directly.
 - Functions intended only for internal module use are prefixed with an underscore (`_`), following the standard Python convention for non-public implementation details. Public functions do not use this prefix.
+- The 3-year rate trend is grouped with the latest conversion result, while historical conversions are displayed separately for the selected date.
 
 ## Compress to ZIP Package
 The ZIP package will contain the five main project files directly at the root level.
