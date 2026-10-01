@@ -33,7 +33,7 @@ For that reason, both functions contain `del amount`. This does not remove the r
 ### Challenges faced
 One challenge was avoiding unnecessary repeated API calls while keeping the solution easy to understand. Caching is handled only in `app.py` using Streamlit's built-in `st.cache_data(max_entries=1)`, so no additional caching library is needed. Each cached function stores only its most recent result. The complete quarterly trend is cached as one result, so repeating the same trend request does not repeat all historical calls.
 
-A second challenge was Streamlit's rerun behaviour. Results are stored in `st.session_state` so they remain visible during normal reruns. Widget callbacks use Streamlit's built-in `st.query_params` API to persist the selected amount, currencies, and historical date across browser refreshes, while clearing any displayed result affected by an input change. This prevents an old conversion from being shown beside newly changed input values.
+A second challenge was Streamlit's rerun behaviour. Results are stored in `st.session_state` so they remain visible during normal reruns. When a new session starts, `_initialise_state()` restores the selected amount, currencies, and historical date from Streamlit's built-in `st.query_params`. Widget callbacks update those query parameters and clear any displayed result affected by an input change. This prevents an old conversion from being shown beside newly changed input values while still preserving the selected inputs across browser refreshes.
 
 ### Possible future features
 Possible extensions include downloadable conversion history, comparison of multiple currency pairs on one chart, and a user-selectable trend period.
@@ -80,7 +80,7 @@ The displayed conversion sentence is produced by `currency.format_output()` in t
 
 ## Project Structure
 
-- `app.py` - Streamlit user interface, one-entry Streamlit caches, result display, stale-result protection, and browser-refresh input persistence
+- `app.py` - Streamlit application entry point, user interface, one-entry Streamlit caches, input-state restoration, result handling, and browser-refresh persistence
 - `api.py` - low-level HTTP GET helper with timeout and network-error handling
 - `frankfurter.py` - isolated Frankfurter endpoint logic and response validation
 - `currency.py` - rounding, inverse-rate calculation, converted-amount calculation, and output formatting
@@ -95,7 +95,7 @@ The displayed conversion sentence is produced by `currency.format_output()` in t
 | `api.py` | `get_url` |
 | `currency.py` | `round_rate`, `reverse_rate`, `format_output` |
 | `frankfurter.py` | `_load_json`, `_normalise_currency`, `_normalise_date`, `_extract_rate`, `get_currencies_list`, `get_latest_rates`, `_historical_unit_rate`, `get_historical_rate`, `_quarterly_dates`, `get_rate_trend` |
-| `app.py` | `_cached_currencies`, `_cached_latest_rate`, `_cached_historical_rate`, `_cached_rate_trend`, `_clear_results`, `_save_inputs`, `_show_result`, `_show_trend` |
+| `app.py` | `main`, `_initialise_state`, `_cached_currencies`, `_cached_latest_rate`, `_cached_historical_rate`, `_cached_rate_trend`, `_fetch_latest`, `_fetch_historical`, `_clear_results`, `_save_inputs`, `_show_result`, `_show_trend` |
 
 ## Application Sequence Diagram
 
@@ -145,7 +145,7 @@ sequenceDiagram
 ## Design and Reliability Notes
 
 - `api.py` uses `requests.get()` directly with a 10-second timeout.
-- `frankfurter.py` is independent of Streamlit; it contains only Frankfurter-specific API and validation logic.
+- `frankfurter.py` is independent of Streamlit and it contains only Frankfurter-specific API and validation logic.
 - Only the assignment's currency-list, latest-rate, and historical-rate endpoint types are used.
 - The three-year chart is built from quarterly calls to the historical endpoint instead of a separate range endpoint.
 - API failures, invalid JSON, missing rate fields, invalid currencies, and future historical dates are handled without showing raw exceptions to the user.
@@ -158,6 +158,7 @@ sequenceDiagram
 - Streamlit spinners are shown while loading currencies, fetching the latest rate, fetching/rendering trend data, and fetching a historical rate.
 - The amount, selected currencies, and historical date are stored in URL query parameters, allowing the input state to be restored after a browser refresh.
 - Streamlit cache data and session state are managed by Streamlit and reset when their corresponding cache/session state is cleared or the application restarts.
+- `main()` contains the application flow in the same order as the displayed interface, while supporting API, state, caching, and rendering logic is kept in helper functions.
 
 ## Create the Submission ZIP
 The assignment requires the five files to be directly inside the ZIP with no enclosing folder.
