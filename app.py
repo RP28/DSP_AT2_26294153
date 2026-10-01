@@ -55,7 +55,6 @@ def main() -> None:
         args=[True]
     )
     latest_clicked = st.button("Get Latest Rate")
-    latest_area = st.container()
     historical_date = st.date_input(
         "Select a date for historical rates:",
         min_value=MIN_HISTORICAL_DATE,
@@ -64,6 +63,7 @@ def main() -> None:
         on_change=_save_inputs
     )
     historical_clicked = st.button("Conversion Rate")
+    latest_area = st.container()
     historical_area = st.container()
     if latest_clicked:
         _fetch_latest(
