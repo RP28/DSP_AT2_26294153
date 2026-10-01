@@ -56,8 +56,6 @@ def main() -> None:
     )
     latest_clicked = st.button("Get Latest Rate")
     latest_area = st.container()
-    # Render the complete latest-rate section before the historical-rate controls
-    # so the result and trend chart always remain grouped above them.
     if latest_clicked:
         _fetch_latest(
             latest_area,
