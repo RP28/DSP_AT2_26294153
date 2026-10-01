@@ -290,11 +290,16 @@ def _show_trend(trend: dict) -> None:
         )
         return
     dates, rates = zip(*sorted(trend.items()))
-    st.subheader(f"Rate Trend Over the Last {TREND_YEARS} years")
+    # Reserve the heading position first, then populate it after the chart is
+    # rendered so the heading and plot are always displayed together.
+    header_placeholder = st.empty()
     st.line_chart(
         {"Date": dates, "Rate": rates},
         x="Date",
         y="Rate"
+    )
+    header_placeholder.subheader(
+        f"Rate Trend Over the Last {TREND_YEARS} years"
     )
 
 
