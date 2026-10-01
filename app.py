@@ -291,12 +291,11 @@ def _show_trend(trend: dict) -> None:
         return
     dates, rates = zip(*sorted(trend.items()))
     st.subheader(f"Rate Trend Over the Last {TREND_YEARS} years")
-    with st.spinner("Rendering the 3-year rate trend chart..."):
-        st.line_chart(
-            {"Date": dates, "Rate": rates},
-            x="Date",
-            y="Rate"
-        )
+    st.line_chart(
+        {"Date": dates, "Rate": rates},
+        x="Date",
+        y="Rate"
+    )
 
 
 if __name__ == "__main__":
