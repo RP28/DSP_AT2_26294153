@@ -55,6 +55,20 @@ def main() -> None:
         args=[True]
     )
     latest_clicked = st.button("Get Latest Rate")
+    latest_area = st.container()
+    # Render the complete latest-rate section before the historical-rate controls
+    # so the result and trend chart always remain grouped above them.
+    if latest_clicked:
+        _fetch_latest(
+            latest_area,
+            from_currency,
+            to_currency,
+            amount
+        )
+    elif result := st.session_state.get("latest_result"):
+        with latest_area:
+            _show_result("Latest Conversion Rate", result)
+            _show_trend(st.session_state.get("latest_trend", {}))
     historical_date = st.date_input(
         "Select a date for historical rates:",
         min_value=MIN_HISTORICAL_DATE,
@@ -63,15 +77,7 @@ def main() -> None:
         on_change=_save_inputs
     )
     historical_clicked = st.button("Conversion Rate")
-    latest_area = st.container()
     historical_area = st.container()
-    if latest_clicked:
-        _fetch_latest(
-            latest_area,
-            from_currency,
-            to_currency,
-            amount
-        )
     if historical_clicked:
         _fetch_historical(
             historical_area,
@@ -80,11 +86,7 @@ def main() -> None:
             to_currency,
             amount
         )
-    if not latest_clicked and (result := st.session_state.get("latest_result")):
-        with latest_area:
-            _show_result("Latest Conversion Rate", result)
-            _show_trend(st.session_state.get("latest_trend", {}))
-    if not historical_clicked and (result := st.session_state.get("historical_result")):
+    elif result := st.session_state.get("historical_result"):
         with historical_area:
             _show_result("Conversion Rate", result)
 
