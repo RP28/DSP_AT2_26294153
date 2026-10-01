@@ -39,7 +39,7 @@ def get_latest_rates(from_currency, to_currency, amount):
     Get the latest unit conversion rate and its date.
 
     ``amount`` is retained because it is part of the starter function
-    signature. Frankfurter is queried for the unit exchange rate only; the
+    signature. Frankfurter is queried for the unit exchange rate only, and the
     user's amount is applied later by ``currency.format_output()``. Therefore
     the amount must not affect this API request. ``del amount`` makes that
     deliberate non-use explicit while preserving the required signature.

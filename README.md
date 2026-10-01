@@ -148,7 +148,7 @@ sequenceDiagram
 - The three-year chart is built from quarterly calls to the historical endpoint instead of a separate range endpoint.
 - API failures, invalid JSON, missing rate fields, invalid currencies, and future historical dates are handled without showing raw exceptions to the user.
 - Same-currency conversions return a rate of `1.0` without a redundant rate request.
-- Cache wrappers raise before returning when an API call fails, so failure sentinels such as `None`, `(None, None)`, or `{}` are not stored as successful cached results; the next attempt can call the API again.
+- Cache wrappers raise before returning when an API call fails, so failure sentinels such as `None`, `(None, None)`, or `{}` are not stored as successful cached results. The next attempt can call the API again.
 - The latest-rate cache uses a one-hour TTL so a "latest" rate is refreshed regularly.
 - The amount is intentionally excluded from latest/historical rate caching because changing the amount does not change the unit exchange rate.
 - Stored Streamlit results are discarded as soon as the inputs on which they depend change, preventing stale results from being displayed.
