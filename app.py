@@ -201,13 +201,13 @@ def _fetch_latest(
             st.session_state.latest_result = latest_result
             _show_result("Latest Conversion Rate", latest_result)
             try:
-                with st.spinner("Fetching the 3-year rate trend..."):
+                with st.spinner("Loading the 3-year rate trend..."):
                     latest_trend = _cached_rate_trend(
                         from_currency,
                         to_currency
                     )
-                st.session_state.latest_trend = latest_trend
-                _show_trend(latest_trend)
+                    st.session_state.latest_trend = latest_trend
+                    _show_trend(latest_trend)
             except RuntimeError:
                 st.session_state.latest_trend = {}
                 _show_trend({})
