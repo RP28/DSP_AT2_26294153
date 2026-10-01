@@ -138,14 +138,14 @@ def _cached_currencies():
     return result
 
 
-@st.cache_data(max_entries=1, ttl=3600, show_spinner=False)
+@st.cache_data(max_entries=10, ttl=3600, show_spinner=False)
 def _cached_latest_rate(from_currency: str, to_currency: str):
     if None in (result := get_latest_rates(from_currency, to_currency, 1.0)):
         raise RuntimeError
     return result
 
 
-@st.cache_data(max_entries=1, show_spinner=False)
+@st.cache_data(max_entries=5, show_spinner=False)
 def _cached_historical_rate(
     from_currency: str,
     to_currency: str,
@@ -163,7 +163,7 @@ def _cached_historical_rate(
     return result
 
 
-@st.cache_data(max_entries=1, show_spinner=False)
+@st.cache_data(max_entries=5, show_spinner=False)
 def _cached_rate_trend(from_currency: str, to_currency: str):
     if not (
         result := get_rate_trend(

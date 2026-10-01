@@ -30,7 +30,7 @@ Keeping the API layer independent of the amount also makes caching more effectiv
 For this reason, both functions contain `del amount`. This does not remove or alter the required parameter in the function signature. It simply makes its intentional non-use explicit and ensures that the amount does not affect either the API request or the rate-cache key.
 
 ### Challenges faced
-One challenge was avoiding unnecessary repeated API calls. Caching is handled only in `app.py` using Streamlit's built-in `st.cache_data(max_entries=1)`. Each cached function stores only its most recent result. 
+One challenge was avoiding unnecessary repeated API calls. Caching is handled only in `app.py` using Streamlit's built-in `st.cache_data()`. The currency list cache stores one result, the latest-rate cache stores up to 10 currency-pair results, the historical-rate cache stores up to five date-and-currency results, and the trend cache stores up to five currency-pair results.
 
 A second challenge was Streamlit's rerun behaviour. Results are stored in `st.session_state` so they remain visible during normal reruns. When a new session starts, `_initialise_state()` restores the selected amount, currencies, and historical date from Streamlit's built-in `st.query_params`. Widget callbacks update those query parameters and clear any displayed result affected by an input change. This prevents an old conversion from being shown beside newly changed input values while still preserving the selected inputs across browser refreshes.
 
@@ -77,7 +77,7 @@ Then:
 
 ## Project Structure
 
-- `app.py` - Streamlit application entry point, user interface, one-entry Streamlit caches, input-state restoration, result handling, and browser-refresh persistence
+- `app.py` - Streamlit application entry point, user interface, Streamlit caches, input-state restoration, result handling, and browser-refresh persistence
 - `api.py` - low-level HTTP GET helper with timeout and network-error handling
 - `frankfurter.py` - isolated Frankfurter endpoint logic and response validation
 - `currency.py` - rounding, inverse-rate calculation, converted-amount calculation, and output formatting
@@ -149,7 +149,8 @@ sequenceDiagram
 - API failures, invalid JSON, missing rate fields, invalid currencies, and future historical dates are handled without showing raw exceptions to the user.
 - Same-currency conversions return a rate of `1.0` without a redundant rate request.
 - Cache wrappers raise before returning when an API call fails, so failure sentinels such as `None`, `(None, None)`, or `{}` are not stored as successful cached results. The next attempt can call the API again.
-- The latest-rate cache uses a one-hour TTL so a "latest" rate is refreshed regularly.
+- The latest-rate cache keeps up to 10 currency-pair results and uses a one-hour TTL so a "latest" rate is refreshed regularly.
+- The historical-rate and trend caches each keep up to five successful results.
 - The amount is intentionally excluded from latest/historical rate caching because changing the amount does not change the unit exchange rate.
 - Stored Streamlit results are discarded as soon as the inputs on which they depend change, preventing stale results from being displayed.
 - Streamlit spinners are shown while loading currencies, fetching the latest rate, fetching/rendering trend data, and fetching a historical rate.
