@@ -56,17 +56,6 @@ def main() -> None:
     )
     latest_clicked = st.button("Get Latest Rate")
     latest_area = st.container()
-    if latest_clicked:
-        _fetch_latest(
-            latest_area,
-            from_currency,
-            to_currency,
-            amount
-        )
-    elif result := st.session_state.get("latest_result"):
-        with latest_area:
-            _show_result("Latest Conversion Rate", result)
-            _show_trend(st.session_state.get("latest_trend", {}))
     historical_date = st.date_input(
         "Select a date for historical rates:",
         min_value=MIN_HISTORICAL_DATE,
@@ -77,6 +66,8 @@ def main() -> None:
     historical_clicked = st.button("Conversion Rate")
     historical_area = st.container()
     if historical_clicked:
+        st.session_state.pop("latest_result", None)
+        st.session_state.pop("latest_trend", None)
         _fetch_historical(
             historical_area,
             historical_date,
@@ -84,6 +75,18 @@ def main() -> None:
             to_currency,
             amount
         )
+    elif latest_clicked:
+        st.session_state.pop("historical_result", None)
+        _fetch_latest(
+            latest_area,
+            from_currency,
+            to_currency,
+            amount
+        )
+    elif result := st.session_state.get("latest_result"):
+        with latest_area:
+            _show_result("Latest Conversion Rate", result)
+            _show_trend(st.session_state.get("latest_trend", {}))
     elif result := st.session_state.get("historical_result"):
         with historical_area:
             _show_result("Conversion Rate", result)
