@@ -158,8 +158,8 @@ sequenceDiagram
 - Public functions are defined first within each module so the main functionality and intended module interface are immediately visible. Internal helper functions are placed afterwards to keep the implementation details separate from the functions intended to be called directly.
 - Functions intended only for internal module use are prefixed with an underscore (`_`), following the standard Python convention for non-public implementation details. Public functions do not use this prefix.
 
-## Create the Submission ZIP
-The assignment requires the five files to be directly inside the ZIP with no enclosing folder.
+## Compress to ZIP Package
+The ZIP package will contain the five main project files directly at the root level.
 
 ### macOS/Linux
 ```bash
